@@ -1,0 +1,223 @@
+import { useState } from "react";
+import { Plus, Search, Trash2, PackagePlus, Check } from "lucide-react";
+import Breadcrumb from "../components/ui/Breadcrumb";
+import Badge from "../components/ui/Badge";
+import { useToast } from "../components/ui/Toast";
+
+const productOptions = [
+  { id: "PRD-001", name: "Laptop Pro 15", sku: "LP-15-2024", cost: 850.00, stock: 45 },
+  { id: "PRD-002", name: "Wireless Headphones", sku: "WH-BT-400", cost: 95.00, stock: 8 },
+  { id: "PRD-003", name: "Office Chair Ergonomic", sku: "OC-ERG-01", cost: 320.00, stock: 0 },
+  { id: "PRD-004", name: "Running Shoes X3", sku: "RS-X3-42", cost: 72.00, stock: 120 },
+  { id: "PRD-005", name: "Power Drill 18V", sku: "PD-18V-PRO", cost: 130.00, stock: 34 },
+  { id: "PRD-006", name: "Standing Desk 140cm", sku: "SD-140-WHT", cost: 480.00, stock: 12 },
+];
+
+const supplierOptions = ["TechDistrib Global", "EuroComponents AG", "AsiaSource Ltd", "FurniCraft Co.", "RapidGear Inc."];
+
+const history = [
+  { id: "SI-0041", date: "Jul 26, 2026", ref: "PO-4421", supplier: "TechDistrib Global", items: 3, total: 18750, user: "J. Donovan", status: "Completed" },
+  { id: "SI-0040", date: "Jul 24, 2026", ref: "PO-4418", supplier: "FurniCraft Co.", items: 2, total: 6400, user: "System", status: "Completed" },
+  { id: "SI-0039", date: "Jul 21, 2026", ref: "PO-4415", supplier: "AsiaSource Ltd", items: 5, total: 32100, user: "J. Donovan", status: "Completed" },
+  { id: "SI-0038", date: "Jul 18, 2026", ref: "PO-4410", supplier: "TechDistrib Global", items: 1, total: 4250, user: "System", status: "Pending" },
+];
+
+interface LineItem { product: typeof productOptions[0] | null; qty: number; cost: number; }
+
+interface StockInProps { onNavigate: (page: string) => void; }
+
+export default function StockIn({ onNavigate }: StockInProps) {
+  const [tab, setTab] = useState<"new" | "history">("new");
+  const [supplier, setSupplier] = useState("");
+  const [ref, setRef] = useState(`PO-${Date.now().toString().slice(-4)}`);
+  const [note, setNote] = useState("");
+  const [lines, setLines] = useState<LineItem[]>([{ product: null, qty: 1, cost: 0 }]);
+  const [submitted, setSubmitted] = useState(false);
+  const { toast } = useToast();
+
+  const addLine = () => setLines(l => [...l, { product: null, qty: 1, cost: 0 }]);
+  const removeLine = (i: number) => setLines(l => l.filter((_, idx) => idx !== i));
+  const updateLine = (i: number, patch: Partial<LineItem>) => setLines(l => l.map((x, idx) => idx === i ? { ...x, ...patch } : x));
+
+  const total = lines.reduce((s, l) => s + (l.qty * l.cost), 0);
+  const canSubmit = supplier && lines.some(l => l.product && l.qty > 0);
+
+  const handleSubmit = () => {
+    setSubmitted(true);
+    toast("success", "Stock received", `${lines.filter(l => l.product).length} item(s) added to inventory`);
+    setTimeout(() => {
+      setSubmitted(false);
+      setLines([{ product: null, qty: 1, cost: 0 }]);
+      setSupplier("");
+      setNote("");
+    }, 2000);
+  };
+
+  return (
+    <div className="p-7 h-full overflow-y-auto space-y-5">
+      <Breadcrumb items={[{ label: "Inventory", page: "inventory" }, { label: "Stock In" }]} onNavigate={onNavigate} />
+
+      <div className="flex gap-1 border-b border-slate-200">
+        {(["new", "history"] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${t === tab ? "border-orange-600 text-orange-700" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+            {t === "new" ? "New Stock Entry" : "Received History"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "new" && (
+        <div className="grid grid-cols-3 gap-5">
+          <div className="col-span-2 space-y-5">
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-4">
+              <h3 className="text-sm font-semibold text-slate-800">Entry Details</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Reference No.</label>
+                  <input value={ref} onChange={e => setRef(e.target.value)}
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 font-mono" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Supplier *</label>
+                  <select value={supplier} onChange={e => setSupplier(e.target.value)}
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/30 bg-white">
+                    <option value="">Select supplier...</option>
+                    {supplierOptions.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Date</label>
+                  <input type="date" defaultValue={new Date().toISOString().slice(0, 10)}
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Warehouse</label>
+                  <select className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/30 bg-white">
+                    <option>Main Warehouse</option>
+                    <option>East Storage</option>
+                    <option>West Storage</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Notes</label>
+                <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder="Optional notes..."
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/30 resize-none" />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-800">Items</h3>
+                <button onClick={addLine} className="flex items-center gap-1.5 text-xs text-orange-600 font-semibold hover:text-orange-700">
+                  <Plus size={13} /> Add Item
+                </button>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 text-xs border-b border-slate-100">
+                    <th className="text-left px-5 py-3 font-semibold">Product</th>
+                    <th className="text-right px-4 py-3 font-semibold">Current Stock</th>
+                    <th className="text-right px-4 py-3 font-semibold">Qty to Add</th>
+                    <th className="text-right px-4 py-3 font-semibold">Unit Cost</th>
+                    <th className="text-right px-4 py-3 font-semibold">Subtotal</th>
+                    <th className="w-10" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line, i) => (
+                    <tr key={i} className="border-t border-slate-50">
+                      <td className="px-5 py-3">
+                        <select value={line.product?.id || ""} onChange={e => {
+                          const p = productOptions.find(x => x.id === e.target.value) || null;
+                          updateLine(i, { product: p, cost: p?.cost || 0 });
+                        }} className="w-full text-xs border border-slate-200 rounded-md px-2 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500/30 bg-white">
+                          <option value="">Select product...</option>
+                          {productOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-4 py-3 text-right text-xs text-slate-500">{line.product?.stock ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        <input type="number" min={1} value={line.qty} onChange={e => updateLine(i, { qty: Number(e.target.value) })}
+                          className="w-20 text-xs border border-slate-200 rounded-md px-2 py-2 text-right focus:outline-none focus:ring-2 focus:ring-orange-500/30 ml-auto block" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input type="number" min={0} step={0.01} value={line.cost} onChange={e => updateLine(i, { cost: Number(e.target.value) })}
+                          className="w-24 text-xs border border-slate-200 rounded-md px-2 py-2 text-right focus:outline-none focus:ring-2 focus:ring-orange-500/30 ml-auto block" />
+                      </td>
+                      <td className="px-4 py-3 text-right text-xs font-semibold text-slate-900">
+                        ${(line.qty * line.cost).toFixed(2)}
+                      </td>
+                      <td className="pr-3">
+                        <button onClick={() => removeLine(i)} disabled={lines.length === 1}
+                          className="p-1.5 text-slate-300 hover:text-red-500 disabled:opacity-30 transition-colors">
+                          <Trash2 size={12} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 space-y-3">
+              <h3 className="text-sm font-semibold text-slate-800 border-b border-slate-100 pb-3">Summary</h3>
+              <div className="flex justify-between text-xs"><span className="text-slate-500">Items</span><span className="font-medium text-slate-800">{lines.filter(l => l.product).length}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-500">Total Units</span><span className="font-medium text-slate-800">{lines.reduce((s, l) => s + l.qty, 0)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-500">Supplier</span><span className="font-medium text-slate-800 truncate max-w-[120px]">{supplier || "—"}</span></div>
+              <div className="border-t border-slate-100 pt-3 flex justify-between">
+                <span className="text-sm font-semibold text-slate-800">Total Cost</span>
+                <span className="text-sm font-bold text-orange-700">${total.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <button onClick={handleSubmit} disabled={!canSubmit || submitted}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 text-sm font-semibold rounded-xl transition-all shadow-sm ${
+                submitted ? "bg-emerald-600 text-white" : "bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50"
+              }`}>
+              {submitted ? <><Check size={15} /> Received!</> : <><PackagePlus size={15} /> Confirm Stock In</>}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tab === "history" && (
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input placeholder="Search entries..." className="pl-8 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg w-48 focus:outline-none focus:ring-2 focus:ring-orange-500/30" />
+            </div>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 text-xs border-b border-slate-100">
+                {["Entry ID", "Date", "Reference", "Supplier", "Items", "Total Cost", "By", "Status"].map(h => (
+                  <th key={h} className="text-left px-5 py-3 font-semibold">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((h, i) => (
+                <tr key={h.id} className={`border-t border-slate-50 hover:bg-orange-50/20 ${i % 2 ? "bg-slate-50/30" : ""}`}>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-600">{h.id}</td>
+                  <td className="px-5 py-3.5 text-xs text-slate-500">{h.date}</td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-700">{h.ref}</td>
+                  <td className="px-5 py-3.5 text-xs text-slate-700">{h.supplier}</td>
+                  <td className="px-5 py-3.5 text-xs text-slate-700">{h.items}</td>
+                  <td className="px-5 py-3.5 text-xs font-semibold text-slate-900">${h.total.toLocaleString()}</td>
+                  <td className="px-5 py-3.5 text-xs text-slate-500">{h.user}</td>
+                  <td className="px-5 py-3.5">
+                    <Badge variant={h.status === "Completed" ? "success" : "warning"}>{h.status}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
