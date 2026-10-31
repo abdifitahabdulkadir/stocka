@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { q } from "./db";
-import { HttpError, idParam, parse, type Schema } from "./http";
+import { q } from "./db.js";
+import { HttpError, idParam, parse, type Schema } from "./http.js";
 
 interface CrudOptions {
   /** Base SELECT using alias `t` for the main table; must expose `t.id`. */

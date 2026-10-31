@@ -1,4 +1,4 @@
-import { q } from "./db";
+import { q } from "./db.js";
 
 /** Raises a notification for each given product that is now at or below its reorder level (once, until read). */
 export async function notifyLowStock(productIds: number[]) {

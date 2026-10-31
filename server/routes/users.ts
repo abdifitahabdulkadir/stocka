@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { q } from "../db";
-import { HttpError, idParam, parse } from "../http";
-import { hashPassword } from "../auth";
+import { q } from "../db.js";
+import { HttpError, idParam, parse } from "../http.js";
+import { hashPassword } from "../auth.js";
 
 const r = Router();
 

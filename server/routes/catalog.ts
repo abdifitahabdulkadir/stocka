@@ -1,4 +1,4 @@
-import { crud } from "../crud";
+import { crud } from "../crud.js";
 
 const lpad = (prefix: string, n = 3) => `'${prefix}-' || lpad(t.id::text, ${n}, '0')`;
 

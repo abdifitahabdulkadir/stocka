@@ -1,14 +1,14 @@
 import express from "express";
-import { requireAdmin, requireAuth } from "./auth";
-import { onError } from "./http";
-import auth from "./routes/auth";
-import { categories, customers, products, suppliers } from "./routes/catalog";
-import { notifications, settings } from "./routes/misc";
-import orders from "./routes/orders";
-import purchaseOrders from "./routes/purchaseOrders";
-import reports from "./routes/reports";
-import stock from "./routes/stock";
-import users from "./routes/users";
+import { requireAdmin, requireAuth } from "./auth.js";
+import { onError } from "./http.js";
+import auth from "./routes/auth.js";
+import { categories, customers, products, suppliers } from "./routes/catalog.js";
+import { notifications, settings } from "./routes/misc.js";
+import orders from "./routes/orders.js";
+import purchaseOrders from "./routes/purchaseOrders.js";
+import reports from "./routes/reports.js";
+import stock from "./routes/stock.js";
+import users from "./routes/users.js";
 
 const app = express();
 app.use("/api", express.json({ limit: "100kb" }));

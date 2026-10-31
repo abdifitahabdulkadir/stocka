@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { q } from "../db";
-import { HttpError, parse } from "../http";
-import { notifyLowStock } from "../notify";
-import { parseItems } from "./orders";
+import { q } from "../db.js";
+import { HttpError, parse } from "../http.js";
+import { notifyLowStock } from "../notify.js";
+import { parseItems } from "./orders.js";
 
 const r = Router();
 

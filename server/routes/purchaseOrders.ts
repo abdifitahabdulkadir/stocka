@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { q } from "../db";
-import { HttpError, idParam, parse } from "../http";
-import { parseItems } from "./orders";
+import { q } from "../db.js";
+import { HttpError, idParam, parse } from "../http.js";
+import { parseItems } from "./orders.js";
 
 const r = Router();
 

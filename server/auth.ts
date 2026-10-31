@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { randomBytes, scrypt, timingSafeEqual, createHash } from "node:crypto";
-import { q } from "./db";
-import { HttpError } from "./http";
+import { q } from "./db.js";
+import { HttpError } from "./http.js";
 
 const SESSION_DAYS = 30;
 const COOKIE_RE = /(?:^|;\s*)session=([a-f0-9]+)/;
