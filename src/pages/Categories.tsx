@@ -3,24 +3,15 @@ import { Plus, Search, Edit2, Trash2, X, Tag, Layers } from "lucide-react";
 import Breadcrumb from "../components/ui/Breadcrumb";
 import Pagination from "../components/ui/Pagination";
 import { useToast } from "../components/ui/Toast";
+import { useApi, post, patch, del } from "../lib/api";
 
-const initialCategories = [
-  { id: "CAT-001", name: "Electronics", description: "Gadgets, computers, and accessories", products: 142, icon: "💻", color: "#ea580c" },
-  { id: "CAT-002", name: "Clothing", description: "Apparel, footwear, and accessories", products: 88, icon: "👕", color: "#f97316" },
-  { id: "CAT-003", name: "Furniture", description: "Office and home furniture items", products: 56, icon: "🪑", color: "#10b981" },
-  { id: "CAT-004", name: "Tools", description: "Power tools, hand tools, and hardware", products: 73, icon: "🔧", color: "#f59e0b" },
-  { id: "CAT-005", name: "Sports & Outdoors", description: "Sports equipment and outdoor gear", products: 45, icon: "⚽", color: "#ef4444" },
-  { id: "CAT-006", name: "Books & Media", description: "Books, games, and digital media", products: 29, icon: "📚", color: "#06b6d4" },
-  { id: "CAT-007", name: "Food & Beverage", description: "Packaged food and drink products", products: 112, icon: "🍎", color: "#84cc16" },
-  { id: "CAT-008", name: "Health & Beauty", description: "Personal care and wellness products", products: 61, icon: "💊", color: "#ec4899" },
-];
+interface Category { id: number; code: string; name: string; description: string; color: string; products: number; icon?: string }
 
-type Category = typeof initialCategories[0];
-
-function CategoryModal({ category, onClose, onSave }: {
+function CategoryModal({ category, saving, onClose, onSave }: {
   category: Partial<Category> | null;
+  saving: boolean;
   onClose: () => void;
-  onSave: (c: Category) => void;
+  onSave: (body: Record<string, unknown>) => void;
 }) {
   const isNew = !category?.id;
   const [form, setForm] = useState<Partial<Category>>(category || { color: "#ea580c" });
@@ -66,9 +57,9 @@ function CategoryModal({ category, onClose, onSave }: {
         </div>
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 font-medium">Cancel</button>
-          <button onClick={() => form.name && onSave({ ...form, id: form.id || `CAT-${Date.now()}`, products: form.products ?? 0 } as Category)}
-            className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition-colors shadow-sm">
-            {isNew ? "Add Category" : "Save Changes"}
+          <button disabled={saving} onClick={() => form.name && onSave({ name: form.name, description: form.description ?? "", color: form.color || "#ea580c" })}
+            className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white font-semibold rounded-lg transition-colors shadow-sm">
+            {saving ? "Saving..." : isNew ? "Add Category" : "Save Changes"}
           </button>
         </div>
       </div>
@@ -79,10 +70,12 @@ function CategoryModal({ category, onClose, onSave }: {
 interface CategoriesProps { onNavigate: (page: string) => void; }
 
 export default function Categories({ onNavigate }: CategoriesProps) {
-  const [categories, setCategories] = useState(initialCategories);
+  const { data, loading, error, reload } = useApi<Category[]>("/api/categories");
+  const categories = data ?? [];
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<{ open: boolean; cat: Partial<Category> | null }>({ open: false, cat: null });
-  const [delId, setDelId] = useState<string | null>(null);
+  const [delId, setDelId] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
   const { toast } = useToast();
   const PER_PAGE = 6;
@@ -90,16 +83,34 @@ export default function Categories({ onNavigate }: CategoriesProps) {
   const filtered = categories.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
-  const handleSave = (c: Category) => {
-    setCategories(prev => prev.some(x => x.id === c.id) ? prev.map(x => x.id === c.id ? c : x) : [c, ...prev]);
-    setModal({ open: false, cat: null });
-    toast("success", modal.cat?.id ? "Category updated" : "Category added");
+  const handleSave = async (body: Record<string, unknown>) => {
+    const id = modal.cat?.id;
+    setSaving(true);
+    try {
+      if (id) await patch(`/api/categories/${id}`, body);
+      else await post("/api/categories", body);
+      toast("success", id ? "Category updated" : "Category added");
+      setModal({ open: false, cat: null });
+      reload();
+    } catch (e) {
+      toast("error", "Couldn't save category", e instanceof Error ? e.message : undefined);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setCategories(prev => prev.filter(c => c.id !== id));
-    setDelId(null);
-    toast("success", "Category deleted");
+  const handleDelete = async (id: number) => {
+    setSaving(true);
+    try {
+      await del(`/api/categories/${id}`);
+      toast("success", "Category deleted");
+      setDelId(null);
+      reload();
+    } catch (e) {
+      toast("error", "Couldn't delete category", e instanceof Error ? e.message : undefined);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -127,7 +138,7 @@ export default function Categories({ onNavigate }: CategoriesProps) {
         {[
           { label: "Total Categories", value: categories.length, icon: Layers, color: "bg-orange-600" },
           { label: "Total Products", value: categories.reduce((s, c) => s + c.products, 0), icon: Tag, color: "bg-amber-600" },
-          { label: "Avg Products", value: Math.round(categories.reduce((s, c) => s + c.products, 0) / categories.length), icon: Tag, color: "bg-emerald-600" },
+          { label: "Avg Products", value: categories.length ? Math.round(categories.reduce((s, c) => s + c.products, 0) / categories.length) : 0, icon: Tag, color: "bg-emerald-600" },
           { label: "Empty Categories", value: categories.filter(c => c.products === 0).length, icon: Tag, color: "bg-amber-500" },
         ].map(card => {
           const Icon = card.icon;
@@ -152,11 +163,11 @@ export default function Categories({ onNavigate }: CategoriesProps) {
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"
                   style={{ backgroundColor: `${cat.color}18` }}>
-                  {cat.icon}
+                  {cat.icon || <Tag size={18} style={{ color: cat.color }} />}
                 </div>
                 <div>
                   <div className="font-semibold text-slate-900 text-sm">{cat.name}</div>
-                  <div className="text-[10px] text-slate-400 font-mono">{cat.id}</div>
+                  <div className="text-[10px] text-slate-400 font-mono">{cat.code}</div>
                 </div>
               </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -182,7 +193,9 @@ export default function Categories({ onNavigate }: CategoriesProps) {
           </div>
         ))}
         {paginated.length === 0 && (
-          <div className="col-span-3 text-center py-16 text-slate-400 text-sm">No categories found</div>
+          <div className={`col-span-3 text-center py-16 text-sm ${error ? "text-red-500" : "text-slate-400"}`}>
+            {loading ? "Loading categories..." : error || "No categories found"}
+          </div>
         )}
       </div>
 
@@ -192,7 +205,7 @@ export default function Categories({ onNavigate }: CategoriesProps) {
         </div>
       )}
 
-      {modal.open && <CategoryModal category={modal.cat} onClose={() => setModal({ open: false, cat: null })} onSave={handleSave} />}
+      {modal.open && <CategoryModal category={modal.cat} saving={saving} onClose={() => setModal({ open: false, cat: null })} onSave={handleSave} />}
 
       {delId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
@@ -204,7 +217,7 @@ export default function Categories({ onNavigate }: CategoriesProps) {
             <p className="text-sm text-slate-500 mb-5">All products will become uncategorised. This cannot be undone.</p>
             <div className="flex gap-3">
               <button onClick={() => setDelId(null)} className="flex-1 px-4 py-2 border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 rounded-lg font-medium">Cancel</button>
-              <button onClick={() => handleDelete(delId)} className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg">Delete</button>
+              <button onClick={() => handleDelete(delId)} disabled={saving} className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg">{saving ? "Deleting..." : "Delete"}</button>
             </div>
           </div>
         </div>

@@ -1,20 +1,15 @@
 import { useState } from "react";
 import { Search, Plus, Minus, Printer, CreditCard, Banknote, Smartphone, X, Check, Tag, Receipt } from "lucide-react";
 import { useToast } from "../components/ui/Toast";
+import { useApi, post } from "../lib/api";
 
-const catalog = [
-  { id: "PRD-001", name: "Laptop Pro 15", sku: "LP-15-2024", price: 1299.99, category: "Electronics", stock: 45 },
-  { id: "PRD-002", name: "Wireless Headphones", sku: "WH-BT-400", price: 189.99, category: "Electronics", stock: 8 },
-  { id: "PRD-004", name: "Running Shoes X3", sku: "RS-X3-42", price: 129.95, category: "Clothing", stock: 120 },
-  { id: "PRD-005", name: "Power Drill 18V", sku: "PD-18V-PRO", price: 219.99, category: "Tools", stock: 34 },
-  { id: "PRD-006", name: "Standing Desk 140cm", sku: "SD-140-WHT", price: 799.00, category: "Furniture", stock: 12 },
-  { id: "PRD-007", name: "Mechanical Keyboard", sku: "MK-TKL-BLU", price: 149.99, category: "Electronics", stock: 3 },
-  { id: "PRD-008", name: "Yoga Mat Premium", sku: "YM-PREM-GRN", price: 79.99, category: "Clothing", stock: 67 },
-  { id: "PRD-009", name: "USB-C Hub 7-in-1", sku: "HUB-7C-SLV", price: 59.99, category: "Electronics", stock: 22 },
-  { id: "PRD-010", name: "Monitor 27\" 4K", sku: "MON-27-4K", price: 649.00, category: "Electronics", stock: 9 },
-];
-
-interface CartItem { product: typeof catalog[0]; qty: number; }
+interface Product { id: number; name: string; sku: string; price: number; category: string | null; stock: number; }
+interface CustomerOption { id: number; name: string; status: string; }
+interface CartItem { product: Product; qty: number; }
+interface ReceiptData {
+  code: string; customer: string; payMethod: string; items: CartItem[];
+  subtotal: number; discountAmt: number; taxAmt: number; total: number;
+}
 
 const categoryColors: Record<string, string> = {
   Electronics: "bg-orange-100 text-orange-700",
@@ -31,32 +26,38 @@ export default function POS({ onNavigate: _onNavigate }: POSProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState<"%" | "$">("%");
-  const [customer, setCustomer] = useState("Walk-in Customer");
+  const [customerId, setCustomerId] = useState<number | "">("");
   const [payMethod, setPayMethod] = useState<"cash" | "card" | "mobile">("card");
-  const [receipt, setReceipt] = useState(false);
-  const [orderNo] = useState(`ORD-${Date.now().toString().slice(-4)}`);
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  const [charging, setCharging] = useState(false);
   const { toast } = useToast();
+  const { data: productData, loading, error, reload } = useApi<Product[]>("/api/products");
+  const { data: customerData } = useApi<CustomerOption[]>("/api/customers");
+  const catalog = productData ?? [];
+  const customers = (customerData ?? []).filter(c => c.status === "Active");
 
-  const categories = ["All", ...Array.from(new Set(catalog.map(p => p.category)))];
+  const categories = ["All", ...Array.from(new Set(catalog.map(p => p.category ?? "Uncategorised")))];
 
   const filtered = catalog.filter(p =>
-    (categoryFilter === "All" || p.category === categoryFilter) &&
+    (categoryFilter === "All" || (p.category ?? "Uncategorised") === categoryFilter) &&
     (p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const addToCart = (product: typeof catalog[0]) => {
+  const addToCart = (product: Product) => {
     setCart(c => {
       const ex = c.find(x => x.product.id === product.id);
-      if (ex) return c.map(x => x.product.id === product.id ? { ...x, qty: x.qty + 1 } : x);
+      if (ex) return c.map(x => x.product.id === product.id ? { ...x, qty: Math.min(product.stock, x.qty + 1) } : x);
       return [...c, { product, qty: 1 }];
     });
   };
 
-  const updateQty = (id: string, delta: number) => {
-    setCart(c => c.map(x => x.product.id === id ? { ...x, qty: Math.max(0, x.qty + delta) } : x).filter(x => x.qty > 0));
+  const updateQty = (id: number, delta: number) => {
+    setCart(c => c
+      .map(x => x.product.id === id ? { ...x, qty: Math.max(0, Math.min(x.product.stock, x.qty + delta)) } : x)
+      .filter(x => x.qty > 0));
   };
 
-  const removeItem = (id: string) => setCart(c => c.filter(x => x.product.id !== id));
+  const removeItem = (id: number) => setCart(c => c.filter(x => x.product.id !== id));
 
   const subtotal = cart.reduce((s, i) => s + i.product.price * i.qty, 0);
   const discountAmt = discountType === "%" ? subtotal * (discount / 100) : Math.min(discount, subtotal);
@@ -64,15 +65,38 @@ export default function POS({ onNavigate: _onNavigate }: POSProps) {
   const taxAmt = (subtotal - discountAmt) * taxRate;
   const total = subtotal - discountAmt + taxAmt;
 
-  const handleCharge = () => { if (cart.length) setReceipt(true); };
-
-  const handleNewSale = () => {
-    setCart([]);
-    setDiscount(0);
-    setReceipt(false);
-    setCustomer("Walk-in Customer");
-    toast("success", "Sale completed", `${orderNo} · $${total.toFixed(2)}`);
+  const handleCharge = async () => {
+    if (!cart.length || charging) return;
+    setCharging(true);
+    try {
+      // The server prices the items, records the sale and takes the stock out in one step.
+      const order = await post<{ code: string }>("/api/orders", {
+        source: "pos",
+        status: "Delivered",
+        customer_id: customerId === "" ? undefined : customerId,
+        items: cart.map(i => ({ product_id: i.product.id, qty: i.qty })),
+      });
+      setReceipt({
+        code: order.code,
+        customer: customers.find(c => c.id === customerId)?.name ?? "Walk-in Customer",
+        payMethod,
+        items: cart,
+        subtotal, discountAmt, taxAmt, total,
+      });
+      setCart([]);
+      setDiscount(0);
+      setCustomerId("");
+      toast("success", "Sale completed", `${order.code} · $${total.toFixed(2)}`);
+      reload();
+    } catch (err) {
+      toast("error", "Could not complete sale", err instanceof Error ? err.message : undefined);
+      reload(); // stock may have changed since the page loaded
+    } finally {
+      setCharging(false);
+    }
   };
+
+  const handleNewSale = () => setReceipt(null);
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -97,12 +121,17 @@ export default function POS({ onNavigate: _onNavigate }: POSProps) {
 
         <div className="flex-1 overflow-y-auto p-4">
           <div className="grid grid-cols-3 gap-3">
+            {filtered.length === 0 && (
+              <div className="col-span-3 text-center py-12 text-sm text-slate-400">
+                {loading ? "Loading products..." : error ? <span className="text-red-500">{error}</span> : "No products found"}
+              </div>
+            )}
             {filtered.map(p => (
               <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock === 0}
                 className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 text-left hover:border-orange-300 hover:shadow-md active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                 <div className="flex items-start justify-between mb-2">
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${categoryColors[p.category] || "bg-slate-100 text-slate-600"}`}>
-                    {p.category}
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${categoryColors[p.category ?? ""] || "bg-slate-100 text-slate-600"}`}>
+                    {p.category ?? "Uncategorised"}
                   </span>
                   {p.stock <= 5 && p.stock > 0 && <span className="text-[10px] text-amber-600 font-semibold">{p.stock} left</span>}
                   {p.stock === 0 && <span className="text-[10px] text-red-600 font-semibold">Out</span>}
@@ -123,15 +152,16 @@ export default function POS({ onNavigate: _onNavigate }: POSProps) {
             <Receipt size={15} className="text-orange-600" />
             <span className="font-semibold text-slate-800 text-sm">Current Order</span>
           </div>
-          <span className="text-xs font-mono text-slate-400">{orderNo}</span>
+          <span className="text-xs font-mono text-slate-400">New sale</span>
         </div>
 
         <div className="px-4 py-3 border-b border-slate-100">
           <label className="block text-[10px] font-semibold text-slate-500 mb-1">CUSTOMER</label>
-          <select value={customer} onChange={e => setCustomer(e.target.value)}
+          <select value={customerId} onChange={e => setCustomerId(e.target.value === "" ? "" : Number(e.target.value))}
             className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500/30 bg-white">
-            {["Walk-in Customer", "Nova Retail Ltd", "Meridian Corp", "Blake & Associates", "Pinnacle Trading"].map(c => (
-              <option key={c}>{c}</option>
+            <option value="">Walk-in Customer</option>
+            {customers.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>
@@ -222,9 +252,9 @@ export default function POS({ onNavigate: _onNavigate }: POSProps) {
               </button>
             ))}
           </div>
-          <button onClick={handleCharge} disabled={!cart.length}
+          <button onClick={handleCharge} disabled={!cart.length || charging}
             className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-colors shadow-sm">
-            Charge ${total.toFixed(2)}
+            {charging ? "Processing..." : `Charge $${total.toFixed(2)}`}
           </button>
         </div>
       </div>
@@ -238,15 +268,15 @@ export default function POS({ onNavigate: _onNavigate }: POSProps) {
                 <Check size={22} className="text-white" />
               </div>
               <p className="text-white font-bold">Payment Successful</p>
-              <p className="text-emerald-100 text-xs mt-0.5">{payMethod.toUpperCase()}</p>
+              <p className="text-emerald-100 text-xs mt-0.5">{receipt.payMethod.toUpperCase()}</p>
             </div>
             <div className="p-5">
               <div className="border border-dashed border-slate-200 rounded-xl p-4 mb-4 font-mono text-xs">
                 <div className="text-center font-bold text-slate-800 mb-3">stocka POS</div>
-                <div className="flex justify-between mb-1 text-slate-500"><span>Order</span><span>{orderNo}</span></div>
-                <div className="flex justify-between mb-3 text-slate-500"><span>Customer</span><span>{customer}</span></div>
+                <div className="flex justify-between mb-1 text-slate-500"><span>Order</span><span>{receipt.code}</span></div>
+                <div className="flex justify-between mb-3 text-slate-500"><span>Customer</span><span>{receipt.customer}</span></div>
                 <div className="border-t border-dashed border-slate-200 pt-3 space-y-1">
-                  {cart.map(i => (
+                  {receipt.items.map(i => (
                     <div key={i.product.id} className="flex justify-between text-slate-700">
                       <span className="truncate max-w-[140px]">{i.product.name} ×{i.qty}</span>
                       <span>${(i.product.price * i.qty).toFixed(2)}</span>
@@ -254,10 +284,10 @@ export default function POS({ onNavigate: _onNavigate }: POSProps) {
                   ))}
                 </div>
                 <div className="border-t border-dashed border-slate-200 mt-3 pt-3 space-y-1">
-                  <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
-                  {discountAmt > 0 && <div className="flex justify-between text-emerald-600"><span>Discount</span><span>-${discountAmt.toFixed(2)}</span></div>}
-                  <div className="flex justify-between text-slate-500"><span>Tax 8%</span><span>${taxAmt.toFixed(2)}</span></div>
-                  <div className="flex justify-between font-bold text-slate-900 text-sm pt-1"><span>TOTAL</span><span>${total.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>${receipt.subtotal.toFixed(2)}</span></div>
+                  {receipt.discountAmt > 0 && <div className="flex justify-between text-emerald-600"><span>Discount</span><span>-${receipt.discountAmt.toFixed(2)}</span></div>}
+                  <div className="flex justify-between text-slate-500"><span>Tax 8%</span><span>${receipt.taxAmt.toFixed(2)}</span></div>
+                  <div className="flex justify-between font-bold text-slate-900 text-sm pt-1"><span>TOTAL</span><span>${receipt.total.toFixed(2)}</span></div>
                 </div>
                 <div className="text-center text-slate-400 mt-3">— Thank you! —</div>
               </div>

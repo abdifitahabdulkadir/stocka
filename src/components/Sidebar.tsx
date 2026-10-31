@@ -1,4 +1,6 @@
 import { useState } from "react";
+import type { User } from "../lib/auth";
+import { initials } from "../lib/UserContext";
 import {
   LayoutDashboard, Package, Warehouse, ShoppingCart, Users,
   Truck, BarChart3, Settings, LogOut, ChevronRight, Boxes,
@@ -56,7 +58,7 @@ const navGroups: { title: string; items: NavItem[] }[] = [
     title: "Admin",
     items: [
       { id: "user-management", label: "Users", icon: UserCog },
-      { id: "notifications", label: "Notifications", icon: Bell, badge: 3 },
+      { id: "notifications", label: "Notifications", icon: Bell },
       { id: "settings", label: "Settings", icon: Settings },
     ],
   },
@@ -66,9 +68,15 @@ interface SidebarProps {
   activePage: string;
   onNavigate: (page: string) => void;
   onLogout: () => void;
+  user: User;
+  notifCount: number;
+  companyName: string;
 }
 
-export default function Sidebar({ activePage, onNavigate, onLogout }: SidebarProps) {
+// Screens only admins can open (the API enforces this too).
+const adminOnly = ["user-management", "settings"];
+
+export default function Sidebar({ activePage, onNavigate, onLogout, user, notifCount, companyName }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [closedGroups, setClosedGroups] = useState<string[]>([]);
 
@@ -88,7 +96,7 @@ export default function Sidebar({ activePage, onNavigate, onLogout }: SidebarPro
               <Boxes size={16} className="text-white" />
             </div>
             <div className="min-w-0">
-              <div className="text-white font-semibold text-sm leading-tight">stocka</div>
+              <div className="text-white font-semibold text-sm leading-tight truncate">{companyName || "stocka"}</div>
               <div className="text-slate-500 text-xs">Inventory Pro</div>
             </div>
           </div>
@@ -109,7 +117,12 @@ export default function Sidebar({ activePage, onNavigate, onLogout }: SidebarPro
 
       {/* Nav */}
       <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
-        {navGroups.map(group => {
+        {navGroups.map(group => ({
+          ...group,
+          items: group.items
+            .filter(i => user.role === "admin" || !adminOnly.includes(i.id))
+            .map(i => i.id === "notifications" ? { ...i, badge: notifCount } : i),
+        })).map(group => {
           const isGroupClosed = closedGroups.includes(group.title);
           return (
             <div key={group.title}>
@@ -169,11 +182,11 @@ export default function Sidebar({ activePage, onNavigate, onLogout }: SidebarPro
             collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2"
           } ${activePage === "profile" ? "bg-slate-800 text-slate-200" : "text-slate-500 hover:bg-slate-800 hover:text-slate-300"}`}
         >
-          <div className="w-6 h-6 rounded-full bg-orange-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">MA</div>
+          <div className="w-6 h-6 rounded-full bg-orange-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">{initials(user)}</div>
           {!collapsed && (
             <div className="flex-1 min-w-0 text-left">
-              <div className="text-xs font-semibold text-slate-200 truncate">Maryan Abdulaziz</div>
-              <div className="text-[10px] text-slate-500 truncate">Admin</div>
+              <div className="text-xs font-semibold text-slate-200 truncate">{user.name || user.email}</div>
+              <div className="text-[10px] text-slate-500 truncate capitalize">{user.role}</div>
             </div>
           )}
         </button>

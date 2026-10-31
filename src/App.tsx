@@ -1,12 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ToastProvider } from "./components/ui/Toast";
 
-// Auth pages
 import Login from "./pages/Login";
 import Register from "./pages/auth/Register";
-import ForgotPassword from "./pages/auth/ForgotPassword";
-import ResetPassword from "./pages/auth/ResetPassword";
-import VerifyEmail from "./pages/auth/VerifyEmail";
+import { getMe, logout, needsSetup, type User } from "./lib/auth";
+import { SESSION_EXPIRED, SETTINGS_SAVED, get } from "./lib/api";
+import { UserProvider } from "./lib/UserContext";
 
 // Layout
 import Sidebar from "./components/Sidebar";
@@ -31,44 +30,58 @@ import UserProfile from "./pages/UserProfile";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
-type AuthPage = "login" | "register" | "forgot-password" | "reset-password" | "verify-email";
-
-const authPages: AuthPage[] = ["login", "register", "forgot-password", "reset-password", "verify-email"];
-
 export default function App() {
-  const [authPage, setAuthPage] = useState<AuthPage>("login");
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [setup, setSetup] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [page, setPage] = useState("dashboard");
 
-  const navigate = (p: string) => {
-    if (authPages.includes(p as AuthPage)) setAuthPage(p as AuthPage);
-    else setPage(p);
-  };
+  useEffect(() => {
+    Promise.all([getMe(), needsSetup()]).then(([u, s]) => { setUser(u); setSetup(s); setChecking(false); });
+  }, []);
 
-  const authNavigate = (p: string) => {
-    if (authPages.includes(p as AuthPage)) setAuthPage(p as AuthPage);
-    else { setLoggedIn(true); setPage("dashboard"); }
-  };
+  // Any API call that comes back 401 sends the user back to sign-in.
+  useEffect(() => {
+    const expired = () => setUser(null);
+    window.addEventListener(SESSION_EXPIRED, expired);
+    return () => window.removeEventListener(SESSION_EXPIRED, expired);
+  }, []);
 
-  if (!loggedIn) {
-    if (authPage === "register") return <ToastProvider><Register onNavigate={authNavigate} /></ToastProvider>;
-    if (authPage === "forgot-password") return <ToastProvider><ForgotPassword onNavigate={authNavigate} /></ToastProvider>;
-    if (authPage === "reset-password") return <ToastProvider><ResetPassword onNavigate={authNavigate} /></ToastProvider>;
-    if (authPage === "verify-email") return <ToastProvider><VerifyEmail onNavigate={authNavigate} /></ToastProvider>;
+  // Unread-notification count and company name for the shell; refreshed on every navigation.
+  const [notifCount, setNotifCount] = useState(0);
+  const [companyName, setCompanyName] = useState("");
+  const [shellTick, setShellTick] = useState(0);
+  useEffect(() => {
+    const refresh = () => setShellTick(t => t + 1);
+    window.addEventListener(SETTINGS_SAVED, refresh);
+    return () => window.removeEventListener(SETTINGS_SAVED, refresh);
+  }, []);
+  useEffect(() => {
+    if (!user) return;
+    get<{ read: boolean }[]>("/api/notifications").then(n => setNotifCount(n.filter(x => !x.read).length)).catch(() => {});
+    get<Record<string, string>>("/api/settings").then(s => setCompanyName(s.company ?? "")).catch(() => {});
+  }, [user, page, shellTick]);
 
+  const navigate = (p: string) => setPage(p);
+  const enter = (u: User) => { setUser(u); setSetup(false); setPage("dashboard"); };
+  const signOut = async () => { await logout(); setUser(null); };
+
+  if (checking) return <div className="min-h-screen bg-slate-50" />;
+
+  if (!user) {
     return (
       <ToastProvider>
-        <Login onLogin={() => setLoggedIn(true)} />
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-50">
-          <button onClick={() => setAuthPage("register")} className="px-3 py-1.5 text-xs bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors">Register →</button>
-          <button onClick={() => setAuthPage("forgot-password")} className="px-3 py-1.5 text-xs bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors">Forgot Password →</button>
-        </div>
+        {setup ? <Register onRegistered={enter} /> : <Login onLogin={enter} />}
       </ToastProvider>
     );
   }
 
+  // Staff can't open admin-only screens (the API refuses them too).
+  const adminOnly = ["user-management", "settings"];
+  const activePage = user.role !== "admin" && adminOnly.includes(page) ? "dashboard" : page;
+
   const renderPage = () => {
-    switch (page) {
+    switch (activePage) {
       case "dashboard": return <Dashboard />;
       case "products": return <Products />;
       case "categories": return <Categories onNavigate={navigate} />;
@@ -91,15 +104,17 @@ export default function App() {
 
   return (
     <ToastProvider>
+      <UserProvider value={{ user, setUser }}>
       <div className="flex h-screen overflow-hidden bg-slate-50">
-        <Sidebar activePage={page} onNavigate={navigate} onLogout={() => setLoggedIn(false)} />
+        <Sidebar activePage={activePage} onNavigate={navigate} onLogout={signOut} user={user} notifCount={notifCount} companyName={companyName} />
         <div className="flex flex-col flex-1 overflow-hidden">
-          <TopBar page={page} notifCount={3} onNavigate={navigate} />
+          <TopBar page={activePage} notifCount={notifCount} user={user} onNavigate={navigate} />
           <main className="flex-1 overflow-hidden">
             {renderPage()}
           </main>
         </div>
       </div>
+      </UserProvider>
     </ToastProvider>
   );
 }

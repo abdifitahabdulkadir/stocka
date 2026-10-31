@@ -1,41 +1,55 @@
 import { useState } from "react";
+import { useApi, patch } from "../lib/api";
+import { useToast } from "../components/ui/Toast";
 import { Search, Eye, X, ChevronDown, Download } from "lucide-react";
 import Breadcrumb from "../components/ui/Breadcrumb";
 import Badge from "../components/ui/Badge";
 import Pagination from "../components/ui/Pagination";
 
-const allOrders = [
-  { id: "ORD-8821", customer: "Nova Retail Ltd", email: "nova@novaretail.co", date: "Jul 24, 2026", items: [{ name: "Laptop Pro 15", qty: 2, price: 1299.99 }, { name: "USB-C Hub 7-in-1", qty: 4, price: 59.99 }], payment: "Bank Transfer", status: "Delivered" },
-  { id: "ORD-8820", customer: "Meridian Corp", email: "orders@meridiancorp.com", date: "Jul 24, 2026", items: [{ name: "Wireless Headphones", qty: 2, price: 189.99 }], payment: "Credit Card", status: "Processing" },
-  { id: "ORD-8819", customer: "Blake & Associates", email: "blake@bkassoc.net", date: "Jul 23, 2026", items: [{ name: "Running Shoes X3", qty: 4, price: 129.95 }, { name: "Yoga Mat Premium", qty: 2, price: 79.99 }], payment: "Credit Card", status: "Shipped" },
-  { id: "ORD-8818", customer: "Pinnacle Trading", email: "trade@pinnacletrd.com", date: "Jul 23, 2026", items: [{ name: "Standing Desk 140cm", qty: 5, price: 799.00 }, { name: "Office Chair Ergonomic", qty: 5, price: 549.00 }, { name: "Mechanical Keyboard", qty: 5, price: 149.99 }], payment: "Bank Transfer", status: "Delivered" },
-  { id: "ORD-8817", customer: "Crestline Group", email: "crest@crestlinegroup.io", date: "Jul 22, 2026", items: [{ name: "Office Chair Ergonomic", qty: 1, price: 549.00 }], payment: "Credit Card", status: "Cancelled" },
-  { id: "ORD-8816", customer: "Vertex Solutions", email: "purchasing@vertexsol.com", date: "Jul 22, 2026", items: [{ name: "Monitor 27\" 4K", qty: 2, price: 649.00 }, { name: "Mechanical Keyboard", qty: 2, price: 149.99 }], payment: "Bank Transfer", status: "Delivered" },
-  { id: "ORD-8815", customer: "Meridian Corp", email: "orders@meridiancorp.com", date: "Jul 21, 2026", items: [{ name: "Laptop Pro 15", qty: 3, price: 1299.99 }, { name: "Wireless Headphones", qty: 5, price: 189.99 }], payment: "Credit Card", status: "Delivered" },
-  { id: "ORD-8814", customer: "Nova Retail Ltd", email: "nova@novaretail.co", date: "Jul 21, 2026", items: [{ name: "Running Shoes X3", qty: 2, price: 129.95 }], payment: "Mobile Pay", status: "Processing" },
-  { id: "ORD-8813", customer: "Pinnacle Trading", email: "trade@pinnacletrd.com", date: "Jul 20, 2026", items: [{ name: "Power Drill 18V", qty: 3, price: 219.99 }, { name: "Standing Desk 140cm", qty: 6, price: 799.00 }], payment: "Bank Transfer", status: "Shipped" },
-  { id: "ORD-8812", customer: "Blake & Associates", email: "blake@bkassoc.net", date: "Jul 19, 2026", items: [{ name: "Yoga Mat Premium", qty: 5, price: 79.99 }], payment: "Credit Card", status: "Delivered" },
-];
+interface Order {
+  id: number; code: string; customer: string | null; customer_id: number | null;
+  status: "Processing" | "Shipped" | "Delivered" | "Cancelled"; source: "order" | "pos";
+  total: number; items: number; created_at: string;
+}
+interface OrderLine { id: number; product_id: number | null; name: string; qty: number; unit_price: number; }
+
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 const statusVariant: Record<string, "success" | "blue" | "purple" | "danger" | "neutral"> = {
   Delivered: "success", Processing: "blue", Shipped: "purple", Cancelled: "danger",
 };
 
-type Order = typeof allOrders[0];
+function OrderDetailModal({ order, onClose, onChanged }: { order: Order; onClose: () => void; onChanged: () => void }) {
+  const { data, loading, error } = useApi<Order & { lines: OrderLine[] }>(`/api/orders/${order.id}`);
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+  const lines = data?.lines ?? [];
+  const status = data?.status ?? order.status;
 
-function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => void }) {
-  const subtotal = order.items.reduce((s, i) => s + i.qty * i.price, 0);
-  const tax = subtotal * 0.08;
+  const setStatus = async (next: Order["status"]) => {
+    setSaving(true);
+    try {
+      await patch(`/api/orders/${order.id}`, { status: next });
+      toast("success", next === "Cancelled" ? "Order cancelled" : `Order marked ${next.toLowerCase()}`, next === "Cancelled" ? "Items returned to stock" : order.code);
+      onChanged();
+      onClose();
+    } catch (err) {
+      toast("error", "Could not update order", err instanceof Error ? err.message : undefined);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 border border-slate-100 overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="font-bold text-slate-900">{order.id}</h2>
-              <Badge variant={statusVariant[order.status]}>{order.status}</Badge>
+              <h2 className="font-bold text-slate-900">{order.code}</h2>
+              <Badge variant={statusVariant[status]}>{status}</Badge>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">{order.date} · {order.payment}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{fmtDate(order.created_at)} · {order.source === "pos" ? "POS sale" : "Order"}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
         </div>
@@ -43,47 +57,51 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
         <div className="p-6">
           <div className="bg-slate-50 rounded-xl p-4 mb-4">
             <p className="text-xs font-semibold text-slate-600 mb-1">Customer</p>
-            <p className="text-sm font-semibold text-slate-900">{order.customer}</p>
-            <p className="text-xs text-slate-500">{order.email}</p>
+            <p className="text-sm font-semibold text-slate-900">{order.customer ?? "Walk-in customer"}</p>
           </div>
 
-          <table className="w-full text-xs mb-4">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className="text-left py-2 text-slate-500 font-semibold">Item</th>
-                <th className="text-right py-2 text-slate-500 font-semibold">Qty</th>
-                <th className="text-right py-2 text-slate-500 font-semibold">Price</th>
-                <th className="text-right py-2 text-slate-500 font-semibold">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {order.items.map((item, i) => (
-                <tr key={i} className="border-b border-slate-50">
-                  <td className="py-2.5 font-medium text-slate-800">{item.name}</td>
-                  <td className="py-2.5 text-right text-slate-600">{item.qty}</td>
-                  <td className="py-2.5 text-right text-slate-600">${item.price.toFixed(2)}</td>
-                  <td className="py-2.5 text-right font-semibold text-slate-900">${(item.qty * item.price).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {loading && <p className="text-xs text-slate-400 py-6 text-center">Loading items...</p>}
+          {error && <p className="text-xs text-red-500 py-6 text-center">{error}</p>}
+          {data && (
+            <>
+              <table className="w-full text-xs mb-4">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-2 text-slate-500 font-semibold">Item</th>
+                    <th className="text-right py-2 text-slate-500 font-semibold">Qty</th>
+                    <th className="text-right py-2 text-slate-500 font-semibold">Price</th>
+                    <th className="text-right py-2 text-slate-500 font-semibold">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map(item => (
+                    <tr key={item.id} className="border-b border-slate-50">
+                      <td className="py-2.5 font-medium text-slate-800">{item.name}</td>
+                      <td className="py-2.5 text-right text-slate-600">{item.qty}</td>
+                      <td className="py-2.5 text-right text-slate-600">${item.unit_price.toFixed(2)}</td>
+                      <td className="py-2.5 text-right font-semibold text-slate-900">${(item.qty * item.unit_price).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-xs text-slate-500"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between text-xs text-slate-500"><span>Tax (8%)</span><span>${tax.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold text-slate-900 border-t border-slate-100 pt-2">
-              <span>Total</span><span className="text-orange-700">${(subtotal + tax).toFixed(2)}</span>
-            </div>
-          </div>
+              <div className="flex justify-between font-bold text-slate-900 border-t border-slate-100 pt-2">
+                <span>Total</span><span className="text-orange-700">${data.total.toFixed(2)}</span>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50">
           <div className="flex gap-2">
-            {order.status === "Processing" && (
-              <button className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700">Mark Shipped</button>
+            {status === "Processing" && (
+              <button disabled={saving} onClick={() => setStatus("Shipped")} className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 disabled:opacity-60">Mark Shipped</button>
             )}
-            {order.status !== "Cancelled" && order.status !== "Delivered" && (
-              <button className="px-3 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg font-semibold hover:bg-red-50">Cancel</button>
+            {status === "Shipped" && (
+              <button disabled={saving} onClick={() => setStatus("Delivered")} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 disabled:opacity-60">Mark Delivered</button>
+            )}
+            {status !== "Cancelled" && status !== "Delivered" && (
+              <button disabled={saving} onClick={() => setStatus("Cancelled")} className="px-3 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg font-semibold hover:bg-red-50 disabled:opacity-60">Cancel</button>
             )}
           </div>
           <button onClick={onClose} className="px-4 py-1.5 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Close</button>
@@ -96,6 +114,8 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
 interface OrdersProps { onNavigate: (page: string) => void; }
 
 export default function Orders({ onNavigate }: OrdersProps) {
+  const { data, loading, error, reload } = useApi<Order[]>("/api/orders");
+  const allOrders = data ?? [];
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [selected, setSelected] = useState<Order | null>(null);
@@ -106,14 +126,11 @@ export default function Orders({ onNavigate }: OrdersProps) {
 
   const filtered = allOrders.filter(o =>
     (statusFilter === "All" || o.status === statusFilter) &&
-    (o.id.toLowerCase().includes(search.toLowerCase()) || o.customer.toLowerCase().includes(search.toLowerCase()))
+    (o.code.toLowerCase().includes(search.toLowerCase()) || (o.customer ?? "walk-in customer").toLowerCase().includes(search.toLowerCase()))
   );
 
   const paginated = filtered.slice((page - 1) * PER, page * PER);
-  const totalRevenue = filtered.reduce((s, o) => {
-    const sub = o.items.reduce((ss, i) => ss + i.qty * i.price, 0);
-    return s + sub * 1.08;
-  }, 0);
+  const totalRevenue = filtered.filter(o => o.status !== "Cancelled").reduce((s, o) => s + o.total, 0);
 
   return (
     <div className="p-7 h-full overflow-y-auto space-y-5">
@@ -169,26 +186,23 @@ export default function Orders({ onNavigate }: OrdersProps) {
                 <th className="text-left px-4 py-3 font-semibold">Date</th>
                 <th className="text-right px-4 py-3 font-semibold">Items</th>
                 <th className="text-right px-4 py-3 font-semibold">Total</th>
-                <th className="text-left px-4 py-3 font-semibold">Payment</th>
+                <th className="text-left px-4 py-3 font-semibold">Channel</th>
                 <th className="text-left px-4 py-3 font-semibold">Status</th>
                 <th className="text-center px-4 py-3 font-semibold">Action</th>
               </tr>
             </thead>
             <tbody>
               {paginated.map((o, i) => {
-                const subtotal = o.items.reduce((s, x) => s + x.qty * x.price, 0);
-                const total = subtotal * 1.08;
                 return (
                   <tr key={o.id} className={`border-t border-slate-50 hover:bg-orange-50/30 transition-colors ${i % 2 ? "bg-slate-50/30" : ""}`}>
-                    <td className="px-5 py-3.5 font-mono text-xs text-slate-600">{o.id}</td>
+                    <td className="px-5 py-3.5 font-mono text-xs text-slate-600">{o.code}</td>
                     <td className="px-4 py-3.5">
-                      <div className="text-xs font-semibold text-slate-800">{o.customer}</div>
-                      <div className="text-[10px] text-slate-400">{o.email}</div>
+                      <div className="text-xs font-semibold text-slate-800">{o.customer ?? "Walk-in customer"}</div>
                     </td>
-                    <td className="px-4 py-3.5 text-xs text-slate-500">{o.date}</td>
-                    <td className="px-4 py-3.5 text-right text-xs text-slate-700">{o.items.length}</td>
-                    <td className="px-4 py-3.5 text-right text-xs font-semibold text-slate-900">${total.toFixed(2)}</td>
-                    <td className="px-4 py-3.5 text-xs text-slate-600">{o.payment}</td>
+                    <td className="px-4 py-3.5 text-xs text-slate-500">{fmtDate(o.created_at)}</td>
+                    <td className="px-4 py-3.5 text-right text-xs text-slate-700">{o.items}</td>
+                    <td className="px-4 py-3.5 text-right text-xs font-semibold text-slate-900">${o.total.toFixed(2)}</td>
+                    <td className="px-4 py-3.5 text-xs text-slate-600">{o.source === "pos" ? "POS" : "Order"}</td>
                     <td className="px-4 py-3.5">
                       <Badge variant={statusVariant[o.status]}>{o.status}</Badge>
                     </td>
@@ -203,13 +217,18 @@ export default function Orders({ onNavigate }: OrdersProps) {
                   </tr>
                 );
               })}
+              {paginated.length === 0 && (
+                <tr><td colSpan={8} className="text-center py-10 text-slate-400 text-sm">
+                  {loading ? "Loading orders..." : error ? <span className="text-red-500">{error}</span> : "No orders found"}
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>
         <Pagination page={page} total={filtered.length} perPage={PER} onChange={setPage} />
       </div>
 
-      {selected && <OrderDetailModal order={selected} onClose={() => setSelected(null)} />}
+      {selected && <OrderDetailModal order={selected} onClose={() => setSelected(null)} onChanged={reload} />}
     </div>
   );
 }

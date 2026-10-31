@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Search, Plus, Edit2, Trash2, X, ChevronDown } from "lucide-react";
-import { products as initialProducts } from "../data/mockData";
+import { useApi, post, patch, del } from "../lib/api";
+import { useToast } from "../components/ui/Toast";
 
 const statusStyle: Record<string, string> = {
   "In Stock": "text-emerald-700 bg-emerald-50 border-emerald-200",
@@ -9,27 +10,26 @@ const statusStyle: Record<string, string> = {
 };
 
 interface Product {
-  id: string; name: string; category: string; sku: string;
-  price: number; stock: number; reorder: number; status: string;
+  id: number; code: string; name: string; category: string | null; category_id: number | null; sku: string;
+  price: number; cost: number; stock: number; reorder: number; status: string;
 }
+interface Category { id: number; name: string }
 
-function ProductModal({ product, onClose, onSave }: {
+function ProductModal({ product, categories, saving, onClose, onSave }: {
   product: Partial<Product> | null;
+  categories: Category[];
+  saving: boolean;
   onClose: () => void;
-  onSave: (p: Product) => void;
+  onSave: (body: Record<string, unknown>) => void;
 }) {
   const isNew = !product?.id;
   const [form, setForm] = useState<Partial<Product>>(product || {});
 
   const handleSave = () => {
     if (!form.name || !form.sku) return;
-    const stock = Number(form.stock) || 0;
-    const reorder = Number(form.reorder) || 0;
-    const status = stock === 0 ? "Out of Stock" : stock <= reorder ? "Low Stock" : "In Stock";
     onSave({
-      id: form.id || `PRD-${Math.floor(Math.random() * 900 + 100)}`,
-      name: form.name!, category: form.category || "General", sku: form.sku!,
-      price: Number(form.price) || 0, stock, reorder, status,
+      name: form.name, sku: form.sku, category_id: form.category_id || null,
+      price: Number(form.price) || 0, stock: Number(form.stock) || 0, reorder: Number(form.reorder) || 0,
     });
   };
 
@@ -58,10 +58,11 @@ function ProductModal({ product, onClose, onSave }: {
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">Category</label>
-              <select value={form.category || ""} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+              <select value={form.category_id ?? ""} onChange={e => setForm(f => ({ ...f, category_id: e.target.value ? Number(e.target.value) : null }))}
                 className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 bg-white">
-                {["Electronics", "Clothing", "Furniture", "Tools", "Other"].map(c => (
-                  <option key={c}>{c}</option>
+                <option value="">Uncategorised</option>
+                {categories.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>
@@ -87,8 +88,8 @@ function ProductModal({ product, onClose, onSave }: {
         </div>
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 font-medium transition-colors">Cancel</button>
-          <button onClick={handleSave} className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition-colors shadow-sm">
-            {isNew ? "Add Product" : "Save Changes"}
+          <button onClick={handleSave} disabled={saving} className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white font-semibold rounded-lg transition-colors shadow-sm">
+            {saving ? "Saving..." : isNew ? "Add Product" : "Save Changes"}
           </button>
         </div>
       </div>
@@ -97,27 +98,51 @@ function ProductModal({ product, onClose, onSave }: {
 }
 
 export default function Products() {
-  const [products, setProducts] = useState(initialProducts);
+  const { data, loading, error, reload } = useApi<Product[]>("/api/products");
+  const { data: categoryList } = useApi<Category[]>("/api/categories");
+  const products = data ?? [];
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [modal, setModal] = useState<{ open: boolean; product: Partial<Product> | null }>({ open: false, product: null });
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const categories = ["All", ...Array.from(new Set(initialProducts.map(p => p.category)))];
+  const categories = ["All", ...(categoryList ?? []).map(c => c.name)];
 
   const filtered = products.filter(p =>
     (categoryFilter === "All" || p.category === categoryFilter) &&
     (p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const handleSave = (p: Product) => {
-    setProducts(prev => prev.some(x => x.id === p.id) ? prev.map(x => x.id === p.id ? p : x) : [p, ...prev]);
-    setModal({ open: false, product: null });
+  const handleSave = async (body: Record<string, unknown>) => {
+    const id = modal.product?.id;
+    setSaving(true);
+    try {
+      if (id) await patch(`/api/products/${id}`, body);
+      else await post("/api/products", body);
+      toast("success", id ? "Product updated" : "Product added");
+      setModal({ open: false, product: null });
+      reload();
+    } catch (e) {
+      toast("error", "Couldn't save product", e instanceof Error ? e.message : undefined);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
-    setDeleteId(null);
+  const handleDelete = async (id: number) => {
+    setSaving(true);
+    try {
+      await del(`/api/products/${id}`);
+      toast("success", "Product deleted");
+      setDeleteId(null);
+      reload();
+    } catch (e) {
+      toast("error", "Couldn't delete product", e instanceof Error ? e.message : undefined);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -164,10 +189,10 @@ export default function Products() {
                 <tr key={p.id} className={`border-t border-slate-50 hover:bg-orange-50/30 transition-colors ${i % 2 === 1 ? "bg-slate-50/30" : ""}`}>
                   <td className="px-5 py-3.5">
                     <div className="font-semibold text-slate-800 text-xs">{p.name}</div>
-                    <div className="text-[10px] text-slate-400 font-mono">{p.id}</div>
+                    <div className="text-[10px] text-slate-400 font-mono">{p.code}</div>
                   </td>
                   <td className="px-4 py-3.5 font-mono text-xs text-slate-600">{p.sku}</td>
-                  <td className="px-4 py-3.5 text-xs text-slate-600">{p.category}</td>
+                  <td className="px-4 py-3.5 text-xs text-slate-600">{p.category ?? "—"}</td>
                   <td className="px-4 py-3.5 text-right font-semibold text-slate-900 text-xs">${p.price.toFixed(2)}</td>
                   <td className="px-4 py-3.5 text-right text-xs">
                     <span className={`font-bold ${p.stock === 0 ? "text-red-600" : p.stock <= p.reorder ? "text-amber-600" : "text-slate-800"}`}>
@@ -194,9 +219,11 @@ export default function Products() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {(loading || error || filtered.length === 0) && (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-slate-400 text-sm">No products found</td>
+                  <td colSpan={7} className={`text-center py-12 text-sm ${error ? "text-red-500" : "text-slate-400"}`}>
+                    {loading ? "Loading products..." : error || "No products found"}
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -205,7 +232,7 @@ export default function Products() {
       </div>
 
       {modal.open && (
-        <ProductModal product={modal.product} onClose={() => setModal({ open: false, product: null })} onSave={handleSave} />
+        <ProductModal product={modal.product} categories={categoryList ?? []} saving={saving} onClose={() => setModal({ open: false, product: null })} onSave={handleSave} />
       )}
 
       {deleteId && (
@@ -221,9 +248,9 @@ export default function Products() {
                 className="flex-1 px-4 py-2 border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 rounded-lg font-medium transition-colors">
                 Cancel
               </button>
-              <button onClick={() => handleDelete(deleteId)}
-                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors">
-                Delete
+              <button onClick={() => handleDelete(deleteId)} disabled={saving}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors">
+                {saving ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>

@@ -1,12 +1,11 @@
-import { useState } from "react";
-import { Bell, Shield, Database, Globe, Palette, Save } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bell, Globe, Save } from "lucide-react";
+import { useToast } from "../components/ui/Toast";
+import { useApi, put, SETTINGS_SAVED } from "../lib/api";
 
 const sections = [
   { id: "general", label: "General", icon: Globe },
   { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "security", label: "Security", icon: Shield },
-  { id: "data", label: "Data & Backup", icon: Database },
-  { id: "appearance", label: "Appearance", icon: Palette },
 ];
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
@@ -21,19 +20,35 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
 }
 
 export default function Settings() {
+  const { data, loading, error, reload } = useApi<Record<string, string>>("/api/settings");
+  const { toast } = useToast();
   const [activeSection, setActiveSection] = useState("general");
-  const [saved, setSaved] = useState(false);
-  const [notifs, setNotifs] = useState({
-    lowStock: true, newOrder: true, newCustomer: false, reports: true, security: true
-  });
-  const [general, setGeneral] = useState({
-    company: "stocka", timezone: "America/New_York", currency: "USD", language: "English"
-  });
+  const [saving, setSaving] = useState(false);
+  const [company, setCompany] = useState("");
+  const [lowStockAlerts, setLowStockAlerts] = useState(true);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  useEffect(() => {
+    if (!data) return;
+    setCompany(data.company ?? "");
+    setLowStockAlerts(data.lowStockAlerts !== "false");
+  }, [data]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await put("/api/settings", { company: company.trim(), lowStockAlerts: String(lowStockAlerts) });
+      toast("success", "Settings saved");
+      reload();
+      window.dispatchEvent(new Event(SETTINGS_SAVED));
+    } catch (e) {
+      toast("error", "Could not save settings", e instanceof Error ? e.message : undefined);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) return <div className="p-7 text-sm text-slate-400">Loading settings...</div>;
+  if (error) return <div className="p-7 text-sm text-red-500">{error}</div>;
 
   return (
     <div className="p-7 h-full overflow-y-auto">
@@ -56,24 +71,11 @@ export default function Settings() {
           {activeSection === "general" && (
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6 space-y-5">
               <h3 className="font-semibold text-slate-800 text-sm border-b border-slate-100 pb-3">General Settings</h3>
-              {[
-                { label: "Company Name", key: "company", type: "text" },
-                { label: "Timezone", key: "timezone", type: "text" },
-                { label: "Default Currency", key: "currency", type: "text" },
-                { label: "Language", key: "language", type: "text" },
-              ].map(({ label, key, type }) => (
-                <div key={key}>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">{label}</label>
-                  <input type={type}
-                    value={general[key as keyof typeof general]}
-                    onChange={e => setGeneral(g => ({ ...g, [key]: e.target.value }))}
-                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400" />
-                </div>
-              ))}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Low Stock Threshold</label>
-                <input type="number" defaultValue={10}
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Company Name</label>
+                <input value={company} onChange={e => setCompany(e.target.value)} placeholder="stocka" maxLength={100}
                   className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400" />
+                <p className="text-xs text-slate-400 mt-1.5">Shown in the sidebar.</p>
               </div>
             </div>
           )}
@@ -81,109 +83,21 @@ export default function Settings() {
           {activeSection === "notifications" && (
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6 space-y-4">
               <h3 className="font-semibold text-slate-800 text-sm border-b border-slate-100 pb-3">Notification Preferences</h3>
-              {[
-                { key: "lowStock", label: "Low Stock Alerts", desc: "Notify when product stock falls below reorder point" },
-                { key: "newOrder", label: "New Order Notifications", desc: "Receive alerts for every incoming order" },
-                { key: "newCustomer", label: "New Customer Registration", desc: "Get notified when a new customer registers" },
-                { key: "reports", label: "Weekly Reports", desc: "Receive automated weekly performance summaries" },
-                { key: "security", label: "Security Alerts", desc: "Alerts for unusual login activity or access attempts" },
-              ].map(({ key, label, desc }) => (
-                <div key={key} className="flex items-center justify-between py-3 border-b border-slate-50 last:border-0">
-                  <div>
-                    <div className="text-sm font-medium text-slate-800">{label}</div>
-                    <div className="text-xs text-slate-500">{desc}</div>
-                  </div>
-                  <Toggle checked={notifs[key as keyof typeof notifs]}
-                    onChange={() => setNotifs(n => ({ ...n, [key]: !n[key as keyof typeof notifs] }))} />
+              <div className="flex items-center justify-between py-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-800">Low Stock Alerts</div>
+                  <div className="text-xs text-slate-500">Create a notification when a sale or stock-out brings a product to its reorder point</div>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {activeSection === "security" && (
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6 space-y-5">
-              <h3 className="font-semibold text-slate-800 text-sm border-b border-slate-100 pb-3">Security Settings</h3>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Current Password</label>
-                <input type="password" placeholder="••••••••"
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/30" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">New Password</label>
-                <input type="password" placeholder="••••••••"
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/30" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Confirm New Password</label>
-                <input type="password" placeholder="••••••••"
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/30" />
-              </div>
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-xs text-amber-700 font-medium">Two-Factor Authentication is enabled for your account.</p>
-              </div>
-            </div>
-          )}
-
-          {activeSection === "data" && (
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6 space-y-4">
-              <h3 className="font-semibold text-slate-800 text-sm border-b border-slate-100 pb-3">Data & Backup</h3>
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: "Last Backup", value: "Jul 27, 2026 — 03:00 AM", color: "bg-emerald-50 border-emerald-200" },
-                  { label: "Backup Frequency", value: "Daily (Auto)", color: "bg-orange-50 border-orange-200" },
-                  { label: "Storage Used", value: "4.2 GB / 20 GB", color: "bg-slate-50 border-slate-200" },
-                  { label: "Records", value: "1,248 products · 6 customers", color: "bg-slate-50 border-slate-200" },
-                ].map(({ label, value, color }) => (
-                  <div key={label} className={`rounded-lg border p-4 ${color}`}>
-                    <div className="text-xs text-slate-500 mb-1">{label}</div>
-                    <div className="text-sm font-semibold text-slate-900">{value}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button className="px-4 py-2 text-sm border border-slate-200 text-slate-700 hover:bg-slate-50 font-medium rounded-lg transition-colors">
-                  Export All Data
-                </button>
-                <button className="px-4 py-2 text-sm bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition-colors">
-                  Run Backup Now
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeSection === "appearance" && (
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6 space-y-5">
-              <h3 className="font-semibold text-slate-800 text-sm border-b border-slate-100 pb-3">Appearance</h3>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-3">Theme</label>
-                <div className="grid grid-cols-3 gap-3">
-                  {["Light", "Dark", "System"].map((t, i) => (
-                    <button key={t} className={`flex flex-col items-center gap-2 p-4 border-2 rounded-xl transition-colors ${i === 0 ? "border-orange-600 bg-orange-50" : "border-slate-200 hover:border-slate-300"}`}>
-                      <div className={`w-10 h-7 rounded-md ${t === "Dark" ? "bg-slate-800" : t === "System" ? "bg-gradient-to-r from-white to-slate-800 border border-slate-200" : "bg-white border border-slate-200"}`} />
-                      <span className={`text-xs font-medium ${i === 0 ? "text-orange-700" : "text-slate-600"}`}>{t}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-2">Sidebar Color</label>
-                <div className="flex gap-2">
-                  {["#0f172a", "#1e3a8a", "#312e81", "#1f2937", "#064e3b"].map(c => (
-                    <button key={c} className={`w-8 h-8 rounded-lg border-2 ${c === "#0f172a" ? "border-orange-500" : "border-transparent"} hover:scale-110 transition-transform`}
-                      style={{ backgroundColor: c }} />
-                  ))}
-                </div>
+                <Toggle checked={lowStockAlerts} onChange={() => setLowStockAlerts(v => !v)} />
               </div>
             </div>
           )}
 
           <div className="flex justify-end pt-2">
-            <button onClick={handleSave}
-              className={`flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg transition-all shadow-sm ${
-                saved ? "bg-emerald-600 text-white" : "bg-orange-600 hover:bg-orange-700 text-white"
-              }`}>
+            <button onClick={handleSave} disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg transition-all shadow-sm bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white">
               <Save size={14} />
-              {saved ? "Saved!" : "Save Changes"}
+              {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
         </div>

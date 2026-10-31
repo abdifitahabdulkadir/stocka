@@ -1,23 +1,30 @@
 import { useState } from "react";
 import { Eye, EyeOff, Boxes, Lock, Mail } from "lucide-react";
+import { login, type User } from "@/lib/auth";
 
 interface LoginProps {
-  onLogin: () => void;
+  onLogin: (user: User) => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
-  const [email, setEmail] = useState("maryan@stocka.io");
-  const [password, setPassword] = useState("••••••••");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!email || !password) { setError("Please fill in all fields."); return; }
     setLoading(true);
-    setTimeout(() => { setLoading(false); onLogin(); }, 900);
+    try {
+      onLogin(await login(email, password));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -44,9 +51,8 @@ export default function Login({ onLogin }: LoginProps) {
             </div>
           </div>
           <div>
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="mb-1.5">
               <label className="text-xs font-semibold text-slate-600">Password</label>
-              <button type="button" className="text-xs text-orange-600 hover:text-orange-700 font-medium">Forgot password?</button>
             </div>
             <div className="relative">
               <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -72,10 +78,7 @@ export default function Login({ onLogin }: LoginProps) {
           </button>
         </form>
 
-        <div className="mt-6 p-3 bg-orange-50 border border-orange-100 rounded-xl">
-          <p className="text-xs text-orange-700 font-medium mb-0.5">Demo credentials</p>
-          <p className="text-xs text-orange-600">maryan@stocka.io · any password</p>
-        </div>
+        <p className="text-center text-xs text-slate-400 mt-6">Need an account? Ask your administrator.</p>
       </div>
     </div>
   );

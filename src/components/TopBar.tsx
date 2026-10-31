@@ -1,7 +1,9 @@
 import { Bell, ChevronDown } from "lucide-react";
+import type { User } from "../lib/auth";
+import { initials } from "../lib/UserContext";
 
 const pageTitles: Record<string, { title: string; subtitle: string }> = {
-  dashboard: { title: "Dashboard", subtitle: "Welcome back, Maryan" },
+  dashboard: { title: "Dashboard", subtitle: "Welcome back" },
   products: { title: "Products", subtitle: "Manage your product catalog" },
   categories: { title: "Categories", subtitle: "Organize products into groups" },
   inventory: { title: "Inventory", subtitle: "Track stock levels and movements" },
@@ -22,11 +24,13 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
 interface TopBarProps {
   page: string;
   notifCount?: number;
+  user: User;
   onNavigate: (page: string) => void;
 }
 
-export default function TopBar({ page, notifCount = 3, onNavigate }: TopBarProps) {
-  const info = pageTitles[page] || { title: page, subtitle: "" };
+export default function TopBar({ page, notifCount = 0, user, onNavigate }: TopBarProps) {
+  const base = pageTitles[page] || { title: page, subtitle: "" };
+  const info = page === "dashboard" && user.name ? { ...base, subtitle: `Welcome back, ${user.name.split(" ")[0]}` } : base;
   return (
     <header className="flex items-center justify-between px-7 py-4 bg-white border-b border-slate-100 shrink-0">
       <div>
@@ -41,8 +45,8 @@ export default function TopBar({ page, notifCount = 3, onNavigate }: TopBarProps
           )}
         </button>
         <button onClick={() => onNavigate("profile")} className="flex items-center gap-2 pl-3 border-l border-slate-200 cursor-pointer group hover:opacity-80 transition-opacity">
-          <div className="w-7 h-7 rounded-full bg-orange-600 flex items-center justify-center text-white text-xs font-bold">MA</div>
-          <span className="text-sm text-slate-700 font-medium">Maryan</span>
+          <div className="w-7 h-7 rounded-full bg-orange-600 flex items-center justify-center text-white text-xs font-bold">{initials(user)}</div>
+          <span className="text-sm text-slate-700 font-medium">{user.name ? user.name.split(" ")[0] : user.email}</span>
           <ChevronDown size={13} className="text-slate-400 group-hover:text-slate-600" />
         </button>
       </div>

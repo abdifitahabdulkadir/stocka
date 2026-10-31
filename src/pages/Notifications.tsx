@@ -1,33 +1,52 @@
 import { useState } from "react";
-import { Bell, AlertTriangle, ShoppingCart, Package, Users, Settings, Check, CheckCheck, Trash2, Filter } from "lucide-react";
+import { Bell, AlertTriangle, Package, Settings, Check, CheckCheck, Trash2, Filter } from "lucide-react";
 import Breadcrumb from "../components/ui/Breadcrumb";
 import Badge from "../components/ui/Badge";
+import { useToast } from "../components/ui/Toast";
+import { useApi, post, patch, del } from "../lib/api";
 
-const allNotifications = [
-  { id: 1, type: "alert", icon: AlertTriangle, color: "text-red-500 bg-red-50", title: "Out of Stock: Office Chair Ergonomic", body: "Product OC-ERG-01 has reached 0 units. Reorder immediately to avoid sales impact.", time: "2 minutes ago", read: false },
-  { id: 2, type: "order", icon: ShoppingCart, color: "text-orange-500 bg-orange-50", title: "New order received: ORD-8821", body: "Nova Retail Ltd placed an order worth $3,849.94 — 6 items. Processing started.", time: "18 minutes ago", read: false },
-  { id: 3, type: "stock", icon: Package, color: "text-amber-500 bg-amber-50", title: "Low stock: Wireless Headphones", body: "WH-BT-400 has 8 units remaining (reorder point: 15). Consider placing a purchase order.", time: "1 hour ago", read: false },
-  { id: 4, type: "stock", icon: Package, color: "text-amber-500 bg-amber-50", title: "Low stock: Mechanical Keyboard", body: "MK-TKL-BLU has only 3 units remaining. Supplier: TechDistrib Global.", time: "2 hours ago", read: true },
-  { id: 5, type: "order", icon: ShoppingCart, color: "text-orange-500 bg-orange-50", title: "Order ORD-8820 is now Processing", body: "Meridian Corp's order for 2× Wireless Headphones has moved to Processing.", time: "3 hours ago", read: true },
-  { id: 6, type: "user", icon: Users, color: "text-amber-500 bg-amber-50", title: "New user added: Sarah Mitchell", body: "Sarah Mitchell has been granted Manager-level access to stocka.", time: "Yesterday", read: true },
-  { id: 7, type: "order", icon: ShoppingCart, color: "text-emerald-500 bg-emerald-50", title: "Order ORD-8818 delivered", body: "Pinnacle Trading's order of 11 items ($8,201.89) has been marked as delivered.", time: "Yesterday", read: true },
-  { id: 8, type: "system", icon: Settings, color: "text-slate-500 bg-slate-100", title: "Automated backup completed", body: "Your weekly backup was completed successfully. 4.2 GB stored securely.", time: "2 days ago", read: true },
-  { id: 9, type: "user", icon: Users, color: "text-amber-500 bg-amber-50", title: "Login from new device", body: "Your account was accessed from a new browser on macOS. Was this you?", time: "3 days ago", read: true },
-  { id: 10, type: "system", icon: Settings, color: "text-slate-500 bg-slate-100", title: "System update available", body: "stocka v2.4.1 is ready to install. Includes performance improvements and bug fixes.", time: "4 days ago", read: true },
-];
+interface ServerNotification { id: number; type: string; title: string; body: string; read: boolean; created_at: string }
+
+// Server types: "low_stock" (raised when a sale or stock-out leaves a product at/below its reorder level) and "info".
+function categorise(n: ServerNotification) {
+  if (n.type === "low_stock") return /out of stock/i.test(n.title) ? "alert" : "stock";
+  return "system";
+}
+
+const looks = {
+  alert: { icon: AlertTriangle, color: "text-red-500 bg-red-50" },
+  stock: { icon: Package, color: "text-amber-500 bg-amber-50" },
+  system: { icon: Settings, color: "text-slate-500 bg-slate-100" },
+} as const;
+
+function timeAgo(iso: string) {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
+  const days = Math.round(hrs / 24);
+  return days === 1 ? "Yesterday" : `${days} days ago`;
+}
 
 interface NotificationsProps { onNavigate: (page: string) => void; }
 
 export default function Notifications({ onNavigate }: NotificationsProps) {
-  const [notifs, setNotifs] = useState(allNotifications);
+  const { data, loading, error, reload, setData } = useApi<ServerNotification[]>("/api/notifications");
+  const { toast } = useToast();
   const [filter, setFilter] = useState("all");
+  const notifs = (data ?? []).map(n => ({ ...n, category: categorise(n) }));
 
-  const markRead = (id: number) => setNotifs(n => n.map(x => x.id === id ? { ...x, read: true } : x));
-  const markAllRead = () => setNotifs(n => n.map(x => ({ ...x, read: true })));
-  const deleteNotif = (id: number) => setNotifs(n => n.filter(x => x.id !== id));
+  const run = async (action: () => Promise<unknown>) => {
+    try { await action(); reload(); }
+    catch (e) { toast("error", "Something went wrong", e instanceof Error ? e.message : undefined); }
+  };
+  const markRead = (id: number) => { setData(d => d && d.map(x => x.id === id ? { ...x, read: true } : x)); run(() => patch(`/api/notifications/${id}`, { read: true })); };
+  const markAllRead = () => { setData(d => d && d.map(x => ({ ...x, read: true }))); run(() => post("/api/notifications/read-all")); };
+  const deleteNotif = (id: number) => { setData(d => d && d.filter(x => x.id !== id)); run(() => del(`/api/notifications/${id}`)); };
 
-  const types = ["all", "alert", "order", "stock", "user", "system"];
-  const filtered = notifs.filter(n => filter === "all" || n.type === filter);
+  const types = ["all", "alert", "stock", "system"];
+  const filtered = notifs.filter(n => filter === "all" || n.category === filter);
   const unread = notifs.filter(n => !n.read).length;
 
   return (
@@ -62,11 +81,11 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
 
       <div className="space-y-2">
         {filtered.map(notif => {
-          const Icon = notif.icon;
+          const { icon: Icon, color } = looks[notif.category as keyof typeof looks];
           return (
             <div key={notif.id}
               className={`bg-white rounded-xl border shadow-sm p-4 flex items-start gap-4 transition-all ${notif.read ? "border-slate-100 opacity-80" : "border-orange-200 bg-orange-50/20"}`}>
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${notif.color}`}>
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
                 <Icon size={16} />
               </div>
               <div className="flex-1 min-w-0">
@@ -78,7 +97,7 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
                   {!notif.read && <div className="w-2 h-2 rounded-full bg-orange-600 shrink-0 mt-1.5" />}
                 </div>
                 <div className="flex items-center justify-between mt-2">
-                  <span className="text-[10px] text-slate-400">{notif.time}</span>
+                  <span className="text-[10px] text-slate-400">{timeAgo(notif.created_at)}</span>
                   <div className="flex gap-1">
                     {!notif.read && (
                       <button onClick={() => markRead(notif.id)}
@@ -96,13 +115,15 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
             </div>
           );
         })}
-        {filtered.length === 0 && (
+        {loading && <p className="text-center text-sm text-slate-400 py-10">Loading notifications...</p>}
+        {error && <p className="text-center text-sm text-red-500 py-10">{error}</p>}
+        {!loading && !error && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
               <Bell size={24} className="text-slate-300" />
             </div>
             <p className="text-sm font-medium text-slate-500">No notifications</p>
-            <p className="text-xs text-slate-400 mt-1">All caught up!</p>
+            <p className="text-xs text-slate-400 mt-1">Low-stock alerts will show up here.</p>
           </div>
         )}
       </div>

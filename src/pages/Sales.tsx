@@ -1,15 +1,14 @@
 import { useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Search, ChevronDown, Eye } from "lucide-react";
-import { salesData, recentOrders } from "../data/mockData";
+import { useApi } from "../lib/api";
 
-const allOrders = [
-  ...recentOrders,
-  { id: "ORD-8816", customer: "Vertex Solutions", date: "Jul 22, 2026", items: 3, total: 1579.97, status: "Delivered" },
-  { id: "ORD-8815", customer: "Meridian Corp", date: "Jul 21, 2026", items: 7, total: 5124.93, status: "Delivered" },
-  { id: "ORD-8814", customer: "Nova Retail Ltd", date: "Jul 21, 2026", items: 2, total: 379.98, status: "Processing" },
-  { id: "ORD-8813", customer: "Pinnacle Trading", date: "Jul 20, 2026", items: 9, total: 9387.11, status: "Shipped" },
-];
+interface Order {
+  id: number; code: string; customer: string | null; status: string; total: number; items: number; created_at: string;
+}
+interface MonthPoint { month: string; revenue: number; orders: number; }
+
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 const statusStyle: Record<string, string> = {
   Delivered: "text-emerald-700 bg-emerald-50 border-emerald-200",
@@ -19,14 +18,18 @@ const statusStyle: Record<string, string> = {
 };
 
 export default function Sales() {
+  const { data: ordersData, loading, error } = useApi<Order[]>("/api/orders");
+  const { data: reports } = useApi<{ salesByMonth: MonthPoint[] }>("/api/reports");
+  const allOrders = ordersData ?? [];
+  const salesData = reports?.salesByMonth ?? [];
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [selectedOrder, setSelectedOrder] = useState<typeof allOrders[0] | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   const statuses = ["All", "Delivered", "Processing", "Shipped", "Cancelled"];
   const filtered = allOrders.filter(o =>
     (statusFilter === "All" || o.status === statusFilter) &&
-    (o.id.toLowerCase().includes(search.toLowerCase()) || o.customer.toLowerCase().includes(search.toLowerCase()))
+    (o.code.toLowerCase().includes(search.toLowerCase()) || (o.customer ?? "walk-in customer").toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -34,7 +37,7 @@ export default function Sales() {
       <div className="grid grid-cols-2 gap-5">
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
           <h3 className="text-sm font-semibold text-slate-800 mb-1">Monthly Revenue</h3>
-          <p className="text-xs text-slate-500 mb-4">Jul 2025 – Jul 2026</p>
+          <p className="text-xs text-slate-500 mb-4">Last 7 months · excludes cancelled orders</p>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={salesData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
               <defs>
@@ -107,9 +110,9 @@ export default function Sales() {
             <tbody>
               {filtered.map((o, i) => (
                 <tr key={o.id} className={`border-t border-slate-50 hover:bg-orange-50/30 transition-colors ${i % 2 === 1 ? "bg-slate-50/30" : ""}`}>
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-600">{o.id}</td>
-                  <td className="px-4 py-3.5 text-xs font-medium text-slate-800">{o.customer}</td>
-                  <td className="px-4 py-3.5 text-xs text-slate-500">{o.date}</td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-600">{o.code}</td>
+                  <td className="px-4 py-3.5 text-xs font-medium text-slate-800">{o.customer ?? "Walk-in customer"}</td>
+                  <td className="px-4 py-3.5 text-xs text-slate-500">{fmtDate(o.created_at)}</td>
                   <td className="px-4 py-3.5 text-right text-xs text-slate-700">{o.items}</td>
                   <td className="px-4 py-3.5 text-right text-xs font-semibold text-slate-900">${o.total.toFixed(2)}</td>
                   <td className="px-4 py-3.5">
@@ -125,6 +128,11 @@ export default function Sales() {
                   </td>
                 </tr>
               ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={7} className="text-center py-10 text-slate-400 text-sm">
+                  {loading ? "Loading orders..." : error ? <span className="text-red-500">{error}</span> : "No orders found"}
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -135,15 +143,15 @@ export default function Sales() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 border border-slate-100 overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
               <div>
-                <h2 className="font-semibold text-slate-900">{selectedOrder.id}</h2>
-                <p className="text-xs text-slate-500">{selectedOrder.date}</p>
+                <h2 className="font-semibold text-slate-900">{selectedOrder.code}</h2>
+                <p className="text-xs text-slate-500">{fmtDate(selectedOrder.created_at)}</p>
               </div>
               <span className={`px-2.5 py-1 text-xs font-semibold rounded-lg border ${statusStyle[selectedOrder.status]}`}>
                 {selectedOrder.status}
               </span>
             </div>
             <div className="p-6 space-y-4">
-              <div className="flex justify-between text-sm"><span className="text-slate-500">Customer</span><span className="font-semibold text-slate-900">{selectedOrder.customer}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-slate-500">Customer</span><span className="font-semibold text-slate-900">{selectedOrder.customer ?? "Walk-in customer"}</span></div>
               <div className="flex justify-between text-sm"><span className="text-slate-500">Items</span><span className="font-semibold text-slate-900">{selectedOrder.items}</span></div>
               <div className="flex justify-between text-sm"><span className="text-slate-500">Order Total</span><span className="font-bold text-orange-700 text-base">${selectedOrder.total.toFixed(2)}</span></div>
             </div>

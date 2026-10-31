@@ -1,10 +1,15 @@
 import { useState } from "react";
 import { Search, Plus, Globe, ChevronDown, X, Mail, Clock } from "lucide-react";
-import { suppliers as initialSuppliers } from "../data/mockData";
 import Badge from "../components/ui/Badge";
 import { useToast } from "../components/ui/Toast";
+import { useApi, post } from "../lib/api";
 
-type Supplier = typeof initialSuppliers[0];
+interface Supplier {
+  id: number; code: string; name: string; contact: string; email: string; phone: string; country: string;
+  lead_days: number; status: "Preferred" | "Active" | "Suspended"; products: number;
+}
+
+const leadLabel = (days: number) => `${days} day${days === 1 ? "" : "s"}`;
 
 const statusVariant: Record<string, "blue" | "success" | "danger"> = {
   Preferred: "blue", Active: "success", Suspended: "danger",
@@ -17,7 +22,7 @@ function SupplierDetailModal({ supplier, onClose }: { supplier: Supplier; onClos
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
             <h2 className="font-semibold text-slate-900">{supplier.name}</h2>
-            <p className="text-xs text-slate-400 font-mono">{supplier.id}</p>
+            <p className="text-xs text-slate-400 font-mono">{supplier.code}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
         </div>
@@ -27,7 +32,7 @@ function SupplierDetailModal({ supplier, onClose }: { supplier: Supplier; onClos
             ["Email", supplier.email],
             ["Country", supplier.country],
             ["Products Supplied", supplier.products],
-            ["Lead Time", supplier.lead],
+            ["Lead Time", leadLabel(supplier.lead_days)],
             ["Status", supplier.status],
           ].map(([label, value]) => (
             <div key={String(label)} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
@@ -49,10 +54,11 @@ interface SupplierFormData {
   name: string; contact: string; email: string; country: string; lead: string; status: "Preferred" | "Active" | "Suspended";
 }
 
-function CreateSupplierModal({ onClose, onSave }: { onClose: () => void; onSave: (s: Supplier) => void }) {
+function CreateSupplierModal({ onClose, onSave }: { onClose: () => void; onSave: (s: Omit<SupplierFormData, "lead"> & { lead_days: number }) => Promise<void> }) {
   const [form, setForm] = useState<SupplierFormData>({
-    name: "", contact: "", email: "", country: "", lead: "7 days", status: "Active",
+    name: "", contact: "", email: "", country: "", lead: "7", status: "Active",
   });
+  const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Partial<SupplierFormData>>({});
 
   const validate = () => {
@@ -62,17 +68,20 @@ function CreateSupplierModal({ onClose, onSave }: { onClose: () => void; onSave:
     if (!form.email.trim()) e.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = "Invalid email";
     if (!form.country.trim()) e.country = "Country is required";
+    if (form.lead.trim() && !/^\d+$/.test(form.lead.trim())) e.lead = "Enter a number of days";
     return e;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
-    onSave({
-      id: `SUP-${Math.floor(Math.random() * 900 + 100)}`,
-      name: form.name, contact: form.contact, email: form.email,
-      country: form.country, products: 0, lead: form.lead, status: form.status,
-    });
+    setSaving(true);
+    try {
+      await onSave({
+        name: form.name, contact: form.contact, email: form.email,
+        country: form.country, lead_days: form.lead.trim() ? Number(form.lead) : 7, status: form.status,
+      });
+    } finally { setSaving(false); }
   };
 
   const Field = ({ label, k, type = "text", placeholder, icon: Icon }: { label: string; k: keyof SupplierFormData; type?: string; placeholder: string; icon?: React.ElementType }) => (
@@ -105,13 +114,14 @@ function CreateSupplierModal({ onClose, onSave }: { onClose: () => void; onSave:
           <div className="grid grid-cols-2 gap-4">
             <Field label="Country *" k="country" placeholder="USA" icon={Globe} />
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Lead Time</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Lead Time (days)</label>
               <div className="relative">
                 <Clock size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                <input value={form.lead} onChange={e => setForm(f => ({ ...f, lead: e.target.value }))}
-                  placeholder="7 days"
-                  className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400" />
+                <input inputMode="numeric" value={form.lead} onChange={e => setForm(f => ({ ...f, lead: e.target.value }))}
+                  placeholder="7"
+                  className={`w-full pl-9 pr-4 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 ${errors.lead ? "border-red-400 bg-red-50" : "border-slate-200"}`} />
               </div>
+              {errors.lead && <p className="text-xs text-red-500 mt-1">{errors.lead}</p>}
             </div>
           </div>
 
@@ -134,8 +144,8 @@ function CreateSupplierModal({ onClose, onSave }: { onClose: () => void; onSave:
 
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 font-medium hover:text-slate-800">Cancel</button>
-          <button onClick={handleSave} className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition-colors shadow-sm">
-            Add Supplier
+          <button onClick={handleSave} disabled={saving} className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white font-semibold rounded-lg transition-colors shadow-sm">
+            {saving ? "Saving..." : "Add Supplier"}
           </button>
         </div>
       </div>
@@ -144,7 +154,8 @@ function CreateSupplierModal({ onClose, onSave }: { onClose: () => void; onSave:
 }
 
 export default function Suppliers() {
-  const [suppliers, setSuppliers] = useState(initialSuppliers);
+  const { data, loading, error, reload } = useApi<Supplier[]>("/api/suppliers");
+  const suppliers = data ?? [];
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [selected, setSelected] = useState<Supplier | null>(null);
@@ -157,10 +168,15 @@ export default function Suppliers() {
     (s.name.toLowerCase().includes(search.toLowerCase()) || s.contact.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const handleCreate = (s: Supplier) => {
-    setSuppliers(prev => [s, ...prev]);
-    setCreating(false);
-    toast("success", "Supplier added", s.name);
+  const handleCreate = async (s: Omit<SupplierFormData, "lead"> & { lead_days: number }) => {
+    try {
+      await post("/api/suppliers", s);
+      setCreating(false);
+      reload();
+      toast("success", "Supplier added", s.name);
+    } catch (err) {
+      toast("error", "Could not add supplier", err instanceof Error ? err.message : undefined);
+    }
   };
 
   return (
@@ -205,7 +221,7 @@ export default function Suppliers() {
               <tr key={s.id} className={`border-t border-slate-50 hover:bg-orange-50/30 transition-colors ${i % 2 === 1 ? "bg-slate-50/30" : ""}`}>
                 <td className="px-5 py-4">
                   <div className="font-semibold text-slate-800 text-xs">{s.name}</div>
-                  <div className="text-[10px] text-slate-400 font-mono">{s.id}</div>
+                  <div className="text-[10px] text-slate-400 font-mono">{s.code}</div>
                 </td>
                 <td className="px-4 py-4">
                   <div className="text-xs font-medium text-slate-700">{s.contact}</div>
@@ -217,7 +233,7 @@ export default function Suppliers() {
                   </div>
                 </td>
                 <td className="px-4 py-4 text-right text-xs font-semibold text-slate-900">{s.products}</td>
-                <td className="px-4 py-4 text-xs text-slate-600">{s.lead}</td>
+                <td className="px-4 py-4 text-xs text-slate-600">{leadLabel(s.lead_days)}</td>
                 <td className="px-4 py-4">
                   <Badge variant={statusVariant[s.status]}>{s.status}</Badge>
                 </td>
@@ -235,7 +251,9 @@ export default function Suppliers() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="text-center py-10 text-slate-400 text-sm">No suppliers found</td></tr>
+              <tr><td colSpan={7} className="text-center py-10 text-slate-400 text-sm">
+                {loading ? "Loading suppliers..." : error ? <span className="text-red-500">{error}</span> : "No suppliers found"}
+              </td></tr>
             )}
           </tbody>
         </table>

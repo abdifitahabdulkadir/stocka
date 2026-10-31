@@ -3,29 +3,35 @@ import {
   Tooltip, ResponsiveContainer, Legend
 } from "recharts";
 import { Download } from "lucide-react";
-import { salesData } from "../data/mockData";
+import { useApi } from "../lib/api";
 
-const monthlyComparison = salesData.map(d => ({
-  ...d,
-  prevRevenue: Math.round(d.revenue * (0.8 + Math.random() * 0.3)),
-}));
+interface ReportsData {
+  kpis: { revenue: number; orders: number; avg_order: number; cancelled: number; customers: number; stock_value: number };
+  salesByMonth: { month: string; key: string; revenue: number; orders: number; returns: number }[];
+  topProducts: { name: string; units: number; revenue: number }[];
+}
 
-const topProducts = [
-  { name: "Laptop Pro 15", revenue: 58499.55, units: 45, growth: 14.2 },
-  { name: "Office Chair Ergonomic", revenue: 38430.00, units: 70, growth: -3.1 },
-  { name: "Standing Desk 140cm", revenue: 31160.00, units: 39, growth: 22.8 },
-  { name: "Power Drill 18V", revenue: 14739.33, units: 67, growth: 8.5 },
-  { name: "Running Shoes X3", revenue: 13234.75, units: 102, growth: 5.9 },
-];
-
-const kpis = [
-  { label: "Gross Revenue", value: "$373,100" },
-  { label: "Avg Order Value", value: "$134.80" },
-  { label: "Return Rate", value: "3.8%" },
-  { label: "Customer LTV", value: "$2,840" },
-];
+const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
 export default function Reports() {
+  const { data, loading, error } = useApi<ReportsData>("/api/reports");
+
+  if (loading && !data) return <div className="p-7 text-sm text-slate-400">Loading reports...</div>;
+  if (error || !data) return <div className="p-7 text-sm text-red-600">{error || "Could not load reports."}</div>;
+
+  const { kpis: k, salesByMonth, topProducts } = data;
+  const totalOrders = k.orders + k.cancelled;
+  const kpis = [
+    { label: "Gross Revenue", value: money(k.revenue) },
+    { label: "Avg Order Value", value: `$${k.avg_order.toFixed(2)}` },
+    { label: "Return Rate", value: `${totalOrders ? ((k.cancelled / totalOrders) * 100).toFixed(1) : "0.0"}%` },
+    { label: "Revenue / Customer", value: k.customers ? money(k.revenue / k.customers) : "$0" },
+  ];
+  // Previous period = the month before each bar
+  const monthlyComparison = salesByMonth.map((d, i) => ({ ...d, prevRevenue: i > 0 ? salesByMonth[i - 1].revenue : 0 }));
+  const salesData = salesByMonth;
+  const totalTopRevenue = topProducts.reduce((s, p) => s + p.revenue, 0);
+
   return (
     <div className="p-7 space-y-6 overflow-y-auto h-full">
       <div className="flex items-center justify-between">
@@ -94,23 +100,25 @@ export default function Reports() {
               <th className="text-left px-5 py-3 font-semibold">Product</th>
               <th className="text-right px-4 py-3 font-semibold">Revenue</th>
               <th className="text-right px-4 py-3 font-semibold">Units Sold</th>
-              <th className="text-right px-4 py-3 font-semibold">Growth</th>
+              <th className="text-right px-4 py-3 font-semibold">Share</th>
               <th className="px-4 py-3 font-semibold w-40">Bar</th>
             </tr>
           </thead>
           <tbody>
+            {topProducts.length === 0 && (
+              <tr><td colSpan={5} className="px-5 py-8 text-center text-xs text-slate-400">No sales yet.</td></tr>
+            )}
             {topProducts.map((p, i) => {
               const maxRev = topProducts[0].revenue;
-              const pct = (p.revenue / maxRev) * 100;
+              const pct = maxRev ? (p.revenue / maxRev) * 100 : 0;
+              const share = totalTopRevenue ? (p.revenue / totalTopRevenue) * 100 : 0;
               return (
                 <tr key={p.name} className={`border-t border-slate-50 hover:bg-slate-50/60 ${i % 2 === 1 ? "bg-slate-50/30" : ""}`}>
                   <td className="px-5 py-3.5 text-xs font-medium text-slate-800">{p.name}</td>
-                  <td className="px-4 py-3.5 text-right text-xs font-semibold text-slate-900">${p.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                  <td className="px-4 py-3.5 text-right text-xs font-semibold text-slate-900">{money(p.revenue)}</td>
                   <td className="px-4 py-3.5 text-right text-xs text-slate-700">{p.units}</td>
                   <td className="px-4 py-3.5 text-right">
-                    <span className={`text-xs font-semibold ${p.growth >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                      {p.growth >= 0 ? "+" : ""}{p.growth}%
-                    </span>
+                    <span className="text-xs font-semibold text-slate-600">{share.toFixed(1)}%</span>
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="h-2 bg-slate-100 rounded-full overflow-hidden">

@@ -1,36 +1,46 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Search, Trash2, PackageMinus, Check } from "lucide-react";
 import Breadcrumb from "../components/ui/Breadcrumb";
 import Badge from "../components/ui/Badge";
 import { useToast } from "../components/ui/Toast";
-
-const productOptions = [
-  { id: "PRD-001", name: "Laptop Pro 15", sku: "LP-15-2024", stock: 45 },
-  { id: "PRD-002", name: "Wireless Headphones", sku: "WH-BT-400", stock: 8 },
-  { id: "PRD-004", name: "Running Shoes X3", sku: "RS-X3-42", stock: 120 },
-  { id: "PRD-005", name: "Power Drill 18V", sku: "PD-18V-PRO", stock: 34 },
-  { id: "PRD-006", name: "Standing Desk 140cm", sku: "SD-140-WHT", stock: 12 },
-];
+import { post, useApi, withQuery } from "../lib/api";
 
 const reasons = ["Damaged / Defective", "Internal Use", "Expired / Obsolete", "Customer Return", "Adjustment", "Loss / Theft", "Quality Control Reject"];
 
-const history = [
-  { id: "SO-0029", date: "Jul 25, 2026", reason: "Damaged / Defective", items: 2, total: 380, user: "J. Donovan", status: "Approved" },
-  { id: "SO-0028", date: "Jul 23, 2026", reason: "Internal Use", items: 1, total: 130, user: "System", status: "Approved" },
-  { id: "SO-0027", date: "Jul 20, 2026", reason: "Adjustment", items: 3, total: 750, user: "J. Donovan", status: "Approved" },
-  { id: "SO-0026", date: "Jul 17, 2026", reason: "Customer Return", items: 1, total: 190, user: "System", status: "Pending" },
-];
+interface ProductOption { id: number; code: string; name: string; sku: string; cost: number; stock: number; }
+interface Movement { id: number; ref: string; qty: number; unit_cost: number | null; reason: string; note: string; user: string | null; created_at: string; cost?: number; }
+interface LineItem { product: ProductOption | null; qty: number; reason: string; }
 
-interface LineItem { product: typeof productOptions[0] | null; qty: number; reason: string; }
+const fmtDate = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 interface StockOutProps { onNavigate: (page: string) => void; }
 
 export default function StockOut({ onNavigate }: StockOutProps) {
   const [tab, setTab] = useState<"new" | "history">("new");
   const [note, setNote] = useState("");
+  const [search, setSearch] = useState("");
   const [lines, setLines] = useState<LineItem[]>([{ product: null, qty: 1, reason: reasons[0] }]);
+  const [saving, setSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const { toast } = useToast();
+
+  const products = useApi<ProductOption[]>("/api/products");
+  const movements = useApi<Movement[]>(withQuery("/api/stock-movements", { type: "out" }));
+  const productOptions = (products.data ?? []).filter(p => p.stock > 0);
+  const costById = useMemo(() => new Map((products.data ?? []).map(p => [p.id, p.cost])), [products.data]);
+
+  const history = useMemo(() => {
+    const groups = new Map<string, { ref: string; date: string; reason: string; items: number; total: number; user: string }>();
+    for (const m of (movements.data ?? []) as (Movement & { product_id: number })[]) {
+      const g = groups.get(m.ref) ?? { ref: m.ref, date: m.created_at, reason: m.reason || m.note || "—", items: 0, total: 0, user: m.user ?? "System" };
+      g.items += 1;
+      g.total += m.qty * (costById.get(m.product_id) ?? 0);
+      if (g.reason !== m.reason && m.reason) g.reason = "Multiple";
+      groups.set(m.ref, g);
+    }
+    const q = search.trim().toLowerCase();
+    return [...groups.values()].filter(h => !q || h.ref.toLowerCase().includes(q) || h.reason.toLowerCase().includes(q));
+  }, [movements.data, costById, search]);
 
   const addLine = () => setLines(l => [...l, { product: null, qty: 1, reason: reasons[0] }]);
   const removeLine = (i: number) => setLines(l => l.filter((_, idx) => idx !== i));
@@ -38,12 +48,27 @@ export default function StockOut({ onNavigate }: StockOutProps) {
 
   const canSubmit = lines.some(l => l.product && l.qty > 0);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const invalid = lines.find(l => l.product && l.qty > l.product.stock);
     if (invalid) { toast("error", "Insufficient stock", `Only ${invalid.product!.stock} units available`); return; }
-    setSubmitted(true);
-    toast("success", "Stock removed", "Inventory updated successfully");
-    setTimeout(() => { setSubmitted(false); setLines([{ product: null, qty: 1, reason: reasons[0] }]); setNote(""); }, 2000);
+    const valid = lines.filter(l => l.product && l.qty > 0);
+    setSaving(true);
+    try {
+      await post("/api/stock-movements", {
+        type: "out",
+        note,
+        lines: valid.map(l => ({ product_id: l.product!.id, qty: l.qty, reason: l.reason })),
+      });
+      toast("success", "Stock removed", "Inventory updated successfully");
+      setSubmitted(true);
+      products.reload();
+      movements.reload();
+      setTimeout(() => { setSubmitted(false); setLines([{ product: null, qty: 1, reason: reasons[0] }]); setNote(""); }, 2000);
+    } catch (e) {
+      toast("error", "Could not remove stock", e instanceof Error ? e.message : undefined);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -110,7 +135,7 @@ export default function StockOut({ onNavigate }: StockOutProps) {
                       <tr key={i} className="border-t border-slate-50">
                         <td className="px-5 py-3">
                           <select value={line.product?.id || ""} onChange={e => {
-                            const p = productOptions.find(x => x.id === e.target.value) || null;
+                            const p = productOptions.find(x => String(x.id) === e.target.value) || null;
                             update(i, { product: p });
                           }} className="w-full text-xs border border-slate-200 rounded-md px-2 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500/30 bg-white">
                             <option value="">Select product...</option>
@@ -156,11 +181,11 @@ export default function StockOut({ onNavigate }: StockOutProps) {
               <p className="text-[11px] text-amber-600">Stock removals over $500 require manager authorization.</p>
             </div>
 
-            <button onClick={handleSubmit} disabled={!canSubmit || submitted}
+            <button onClick={handleSubmit} disabled={!canSubmit || submitted || saving}
               className={`w-full flex items-center justify-center gap-2 py-2.5 text-sm font-semibold rounded-xl transition-all shadow-sm ${
                 submitted ? "bg-emerald-600 text-white" : "bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
               }`}>
-              {submitted ? <><Check size={15} /> Removed!</> : <><PackageMinus size={15} /> Confirm Stock Out</>}
+              {submitted ? <><Check size={15} /> Removed!</> : <><PackageMinus size={15} /> {saving ? "Saving..." : "Confirm Stock Out"}</>}
             </button>
           </div>
         </div>
@@ -171,7 +196,7 @@ export default function StockOut({ onNavigate }: StockOutProps) {
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <div className="relative">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input placeholder="Search removals..." className="pl-8 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg w-48 focus:outline-none focus:ring-2 focus:ring-orange-500/30" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search removals..." className="pl-8 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg w-48 focus:outline-none focus:ring-2 focus:ring-orange-500/30" />
             </div>
           </div>
           <table className="w-full text-sm">
@@ -183,16 +208,21 @@ export default function StockOut({ onNavigate }: StockOutProps) {
               </tr>
             </thead>
             <tbody>
+              {movements.loading && <tr><td colSpan={7} className="px-5 py-8 text-center text-xs text-slate-400">Loading...</td></tr>}
+              {movements.error && <tr><td colSpan={7} className="px-5 py-8 text-center text-xs text-red-600">{movements.error}</td></tr>}
+              {!movements.loading && !movements.error && history.length === 0 && (
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-xs text-slate-400">No stock removals yet.</td></tr>
+              )}
               {history.map((h, i) => (
-                <tr key={h.id} className={`border-t border-slate-50 hover:bg-orange-50/20 ${i % 2 ? "bg-slate-50/30" : ""}`}>
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-600">{h.id}</td>
-                  <td className="px-5 py-3.5 text-xs text-slate-500">{h.date}</td>
+                <tr key={h.ref} className={`border-t border-slate-50 hover:bg-orange-50/20 ${i % 2 ? "bg-slate-50/30" : ""}`}>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-600">{h.ref}</td>
+                  <td className="px-5 py-3.5 text-xs text-slate-500">{fmtDate(h.date)}</td>
                   <td className="px-5 py-3.5 text-xs text-slate-700">{h.reason}</td>
                   <td className="px-5 py-3.5 text-xs text-slate-700">{h.items}</td>
                   <td className="px-5 py-3.5 text-xs font-semibold text-slate-900">${h.total.toLocaleString()}</td>
                   <td className="px-5 py-3.5 text-xs text-slate-500">{h.user}</td>
                   <td className="px-5 py-3.5">
-                    <Badge variant={h.status === "Approved" ? "success" : "warning"}>{h.status}</Badge>
+                    <Badge variant="success">Approved</Badge>
                   </td>
                 </tr>
               ))}

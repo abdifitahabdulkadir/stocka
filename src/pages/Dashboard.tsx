@@ -3,14 +3,21 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
 import { Package, ShoppingCart, Users, DollarSign, AlertTriangle } from "lucide-react";
-import { salesData, categoryData, recentOrders, inventoryAlerts } from "../data/mockData";
+import { useApi } from "../lib/api";
 
-const statCards = [
-  { label: "Total Revenue", value: "$373,100", icon: DollarSign, color: "bg-orange-600" },
-  { label: "Total Orders", value: "2,768", icon: ShoppingCart, color: "bg-amber-600" },
-  { label: "Products", value: "1,248", icon: Package, color: "bg-emerald-600" },
-  { label: "Active Customers", value: "486", icon: Users, color: "bg-amber-500" },
-];
+interface DashboardData {
+  totals: {
+    products: number; stock_value: number; low_stock: number; out_of_stock: number; customers: number; open_orders: number;
+    revenue_month: number; revenue_prev_month: number; orders_month: number;
+  };
+  salesByMonth: { month: string; revenue: number; orders: number; returns: number }[];
+  categoryData: { name: string; color: string; value: number }[];
+  recentOrders: { id: number; code: string; customer: string | null; date: string; status: string; total: number; items: number }[];
+  inventoryAlerts: { id: number; product: string; sku: string; stock: number; reorder: number; supplier: string | null }[];
+}
+
+const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 const statusColors: Record<string, string> = {
   Delivered: "text-emerald-700 bg-emerald-50 border-emerald-200",
@@ -20,6 +27,24 @@ const statusColors: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  const { data, loading, error } = useApi<DashboardData>("/api/dashboard");
+  if (!data) {
+    return (
+      <div className={`p-7 text-sm ${error ? "text-red-500" : "text-slate-400"}`}>
+        {loading ? "Loading dashboard..." : error || "No data"}
+      </div>
+    );
+  }
+  const { totals, salesByMonth: salesData, categoryData, recentOrders, inventoryAlerts } = data;
+  const categoryTotal = categoryData.reduce((sum, c) => sum + c.value, 0) || 1;
+  const pct = (v: number) => Math.round((v / categoryTotal) * 100);
+  const statCards = [
+    { label: "Revenue This Month", value: money(totals.revenue_month), icon: DollarSign, color: "bg-orange-600" },
+    { label: "Orders This Month", value: totals.orders_month.toLocaleString(), icon: ShoppingCart, color: "bg-amber-600" },
+    { label: "Products", value: totals.products.toLocaleString(), icon: Package, color: "bg-emerald-600" },
+    { label: "Customers", value: totals.customers.toLocaleString(), icon: Users, color: "bg-amber-500" },
+  ];
+
   return (
     <div className="p-7 space-y-6 overflow-y-auto h-full">
       {/* Stat cards */}
@@ -48,10 +73,7 @@ export default function Dashboard() {
               <h3 className="text-sm font-semibold text-slate-800">Revenue Overview</h3>
               <p className="text-xs text-slate-500">Monthly revenue and order volume</p>
             </div>
-            <select className="text-xs border border-slate-200 rounded-md px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-2 focus:ring-orange-300">
-              <option>Last 7 months</option>
-              <option>Last 12 months</option>
-            </select>
+            <span className="text-xs text-slate-500">Last 7 months</span>
           </div>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={salesData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
@@ -74,8 +96,8 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-1">Sales by Category</h3>
-          <p className="text-xs text-slate-500 mb-4">Current period breakdown</p>
+          <h3 className="text-sm font-semibold text-slate-800 mb-1">Products by Category</h3>
+          <p className="text-xs text-slate-500 mb-4">Share of catalogue</p>
           <ResponsiveContainer width="100%" height={160}>
             <PieChart>
               <Pie data={categoryData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
@@ -83,7 +105,7 @@ export default function Dashboard() {
                   <Cell key={index} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} formatter={(v) => [`${v}%`, ""]} />
+              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} formatter={(v) => [`${v} products`, ""]} />
             </PieChart>
           </ResponsiveContainer>
           <div className="space-y-1.5 mt-2">
@@ -93,7 +115,7 @@ export default function Dashboard() {
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
                   <span className="text-slate-600">{c.name}</span>
                 </div>
-                <span className="font-semibold text-slate-800">{c.value}%</span>
+                <span className="font-semibold text-slate-800">{pct(c.value)}%</span>
               </div>
             ))}
           </div>
@@ -105,8 +127,7 @@ export default function Dashboard() {
         <div className="col-span-2 bg-white rounded-xl border border-slate-100 shadow-sm">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <h3 className="text-sm font-semibold text-slate-800">Recent Orders</h3>
-            <button className="text-xs text-orange-600 font-medium hover:text-orange-700">View all</button>
-          </div>
+                      </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -121,9 +142,9 @@ export default function Dashboard() {
               <tbody>
                 {recentOrders.map((order, i) => (
                   <tr key={order.id} className={`border-t border-slate-50 hover:bg-slate-50/60 transition-colors ${i % 2 === 1 ? "bg-slate-50/30" : ""}`}>
-                    <td className="px-5 py-3 font-mono text-xs text-slate-600">{order.id}</td>
-                    <td className="px-4 py-3 text-slate-800 font-medium text-xs">{order.customer}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{order.date}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-slate-600">{order.code}</td>
+                    <td className="px-4 py-3 text-slate-800 font-medium text-xs">{order.customer ?? "Walk-in"}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs">{fmtDate(order.date)}</td>
                     <td className="px-4 py-3 text-right text-slate-900 font-semibold text-xs">${order.total.toFixed(2)}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 text-[10px] font-semibold rounded border ${statusColors[order.status]}`}>
@@ -132,6 +153,9 @@ export default function Dashboard() {
                     </td>
                   </tr>
                 ))}
+                {recentOrders.length === 0 && (
+                  <tr><td colSpan={5} className="text-center py-10 text-slate-400 text-xs">No orders yet</td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -144,8 +168,9 @@ export default function Dashboard() {
             <span className="ml-auto bg-red-100 text-red-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{inventoryAlerts.length}</span>
           </div>
           <div className="divide-y divide-slate-50">
+            {inventoryAlerts.length === 0 && <div className="px-5 py-8 text-center text-xs text-slate-400">Nothing needs reordering</div>}
             {inventoryAlerts.map((alert) => (
-              <div key={alert.sku} className="px-5 py-3.5">
+              <div key={alert.id} className="px-5 py-3.5">
                 <div className="flex items-start justify-between gap-2 mb-1">
                   <span className="text-xs font-semibold text-slate-800">{alert.product}</span>
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${alert.stock === 0 ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700"}`}>
@@ -153,8 +178,7 @@ export default function Dashboard() {
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-400 font-mono">{alert.sku}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Supplier: {alert.supplier}</p>
-                <button className="mt-2 text-[10px] text-orange-600 font-semibold hover:text-orange-700">Reorder now →</button>
+                <p className="text-[10px] text-slate-500 mt-0.5">Supplier: {alert.supplier ?? "—"}</p>
               </div>
             ))}
           </div>
