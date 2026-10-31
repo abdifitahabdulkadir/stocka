@@ -5,6 +5,7 @@ import Badge from "../components/ui/Badge";
 import Pagination from "../components/ui/Pagination";
 import { useToast } from "../components/ui/Toast";
 import { del, patch, post, useApi, withQuery } from "../lib/api";
+import { Skeleton, TableSkeleton } from "../components/ui/Skeleton";
 
 interface SupplierOption { id: number; name: string; }
 interface ProductOption { id: number; name: string; cost: number; }
@@ -181,7 +182,16 @@ function PODetail({ po, busy, onClose, onSend, onReceive, onCancel, onDelete }: 
               <p className="text-xs font-bold text-orange-700">${po.total.toLocaleString()}</p>
             </div>
           </div>
-          {detail.loading && <p className="text-xs text-slate-400 py-4 text-center">Loading...</p>}
+          {detail.loading && (
+            <div className="space-y-3 py-2" role="status" aria-label="Loading">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="flex-1 space-y-2"><Skeleton className="h-3 w-2/5" /><Skeleton className="h-2.5 w-1/4" /></div>
+                  <Skeleton className="h-3 w-14" />
+                </div>
+              ))}
+            </div>
+          )}
           {detail.error && <p className="text-xs text-red-600 py-4 text-center">{detail.error}</p>}
           {!detail.loading && !detail.error && (
             <table className="w-full text-xs">
@@ -345,7 +355,7 @@ export default function PurchaseOrders({ onNavigate }: PurchaseOrdersProps) {
               </tr>
             </thead>
             <tbody>
-              {orders.loading && <tr><td colSpan={8} className="px-5 py-10 text-center text-xs text-slate-400">Loading...</td></tr>}
+              {orders.loading && !orders.data && <TableSkeleton rows={6} cols={8} />}
               {orders.error && <tr><td colSpan={8} className="px-5 py-10 text-center text-xs text-red-600">{orders.error}</td></tr>}
               {!orders.loading && !orders.error && paginated.length === 0 && (
                 <tr><td colSpan={8} className="px-5 py-10 text-center text-xs text-slate-400">{pos.length === 0 ? "No purchase orders yet. Create one with New PO." : "No purchase orders match your filters."}</td></tr>

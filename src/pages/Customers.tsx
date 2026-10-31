@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Search, Plus, Edit2, Trash2, X, Mail, Phone, Building2, MapPin } from "lucide-react";
 import { useToast } from "../components/ui/Toast";
 import { useApi, post, patch, del } from "../lib/api";
+import { TableSkeleton } from "../components/ui/Skeleton";
 
 interface Customer {
   id: number; code: string; name: string; email: string; phone: string; city: string;
@@ -234,10 +235,11 @@ export default function Customers() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {loading && !data && <TableSkeleton rows={6} cols={8} />}
+              {filtered.length === 0 && !(loading && !data) && (
                 <tr>
                   <td colSpan={8} className="text-center py-12 text-slate-400 text-sm">
-                    {loading ? "Loading customers..." : error ? <span className="text-red-500">{error}</span> : "No customers found"}
+                    {error ? <span className="text-red-500">{error}</span> : "No customers found"}
                   </td>
                 </tr>
               )}

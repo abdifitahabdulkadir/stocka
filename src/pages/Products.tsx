@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Search, Plus, Edit2, Trash2, X, ChevronDown } from "lucide-react";
 import { useApi, post, patch, del } from "../lib/api";
 import { useToast } from "../components/ui/Toast";
+import { TableSkeleton } from "../components/ui/Skeleton";
 
 const statusStyle: Record<string, string> = {
   "In Stock": "text-emerald-700 bg-emerald-50 border-emerald-200",
@@ -219,10 +220,11 @@ export default function Products() {
                   </td>
                 </tr>
               ))}
-              {(loading || error || filtered.length === 0) && (
+              {loading && !data && <TableSkeleton rows={7} cols={7} />}
+              {(error || (filtered.length === 0 && !(loading && !data))) && (
                 <tr>
                   <td colSpan={7} className={`text-center py-12 text-sm ${error ? "text-red-500" : "text-slate-400"}`}>
-                    {loading ? "Loading products..." : error || "No products found"}
+                    {error || "No products found"}
                   </td>
                 </tr>
               )}

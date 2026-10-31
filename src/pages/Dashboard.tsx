@@ -4,6 +4,7 @@ import {
 } from "recharts";
 import { Package, ShoppingCart, Users, DollarSign, AlertTriangle } from "lucide-react";
 import { useApi } from "../lib/api";
+import { ChartCardSkeleton, DonutCardSkeleton, StatCardsSkeleton, TableCardSkeleton } from "../components/ui/Skeleton";
 
 interface DashboardData {
   totals: {
@@ -29,9 +30,18 @@ const statusColors: Record<string, string> = {
 export default function Dashboard() {
   const { data, loading, error } = useApi<DashboardData>("/api/dashboard");
   if (!data) {
+    if (!loading) return <div className="p-7 text-sm text-red-500">{error || "No data"}</div>;
     return (
-      <div className={`p-7 text-sm ${error ? "text-red-500" : "text-slate-400"}`}>
-        {loading ? "Loading dashboard..." : error || "No data"}
+      <div className="p-7 space-y-6 overflow-y-auto h-full">
+        <StatCardsSkeleton />
+        <div className="grid grid-cols-3 gap-5">
+          <ChartCardSkeleton className="col-span-2" />
+          <DonutCardSkeleton />
+        </div>
+        <div className="grid grid-cols-3 gap-5">
+          <TableCardSkeleton className="col-span-2" cols={5} />
+          <TableCardSkeleton cols={3} />
+        </div>
       </div>
     );
   }

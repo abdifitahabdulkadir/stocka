@@ -4,6 +4,7 @@ import Breadcrumb from "../components/ui/Breadcrumb";
 import Badge from "../components/ui/Badge";
 import { useToast } from "../components/ui/Toast";
 import { post, useApi, withQuery } from "../lib/api";
+import { TableSkeleton } from "../components/ui/Skeleton";
 
 interface ProductOption { id: number; code: string; name: string; sku: string; cost: number; stock: number; }
 interface SupplierOption { id: number; name: string; }
@@ -224,7 +225,7 @@ export default function StockIn({ onNavigate }: StockInProps) {
               </tr>
             </thead>
             <tbody>
-              {movements.loading && <tr><td colSpan={8} className="px-5 py-8 text-center text-xs text-slate-400">Loading...</td></tr>}
+              {movements.loading && !movements.data && <TableSkeleton rows={5} cols={8} />}
               {movements.error && <tr><td colSpan={8} className="px-5 py-8 text-center text-xs text-red-600">{movements.error}</td></tr>}
               {!movements.loading && !movements.error && history.length === 0 && (
                 <tr><td colSpan={8} className="px-5 py-8 text-center text-xs text-slate-400">No stock received yet.</td></tr>

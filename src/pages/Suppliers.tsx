@@ -3,6 +3,7 @@ import { Search, Plus, Globe, ChevronDown, X, Mail, Clock } from "lucide-react";
 import Badge from "../components/ui/Badge";
 import { useToast } from "../components/ui/Toast";
 import { useApi, post } from "../lib/api";
+import { TableSkeleton } from "../components/ui/Skeleton";
 
 interface Supplier {
   id: number; code: string; name: string; contact: string; email: string; phone: string; country: string;
@@ -250,9 +251,10 @@ export default function Suppliers() {
                 </td>
               </tr>
             ))}
-            {filtered.length === 0 && (
+            {loading && !data && <TableSkeleton rows={6} cols={7} />}
+            {filtered.length === 0 && !(loading && !data) && (
               <tr><td colSpan={7} className="text-center py-10 text-slate-400 text-sm">
-                {loading ? "Loading suppliers..." : error ? <span className="text-red-500">{error}</span> : "No suppliers found"}
+                {error ? <span className="text-red-500">{error}</span> : "No suppliers found"}
               </td></tr>
             )}
           </tbody>

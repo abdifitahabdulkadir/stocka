@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Bell, Globe, Save } from "lucide-react";
 import { useToast } from "../components/ui/Toast";
 import { useApi, put, SETTINGS_SAVED } from "../lib/api";
+import { Skeleton } from "../components/ui/Skeleton";
 
 const sections = [
   { id: "general", label: "General", icon: Globe },
@@ -47,7 +48,21 @@ export default function Settings() {
     }
   };
 
-  if (loading) return <div className="p-7 text-sm text-slate-400">Loading settings...</div>;
+  if (loading && !data) {
+    return (
+      <div className="p-7 h-full overflow-y-auto" role="status" aria-label="Loading">
+        <div className="flex gap-6 max-w-5xl">
+          <div className="w-48 shrink-0 space-y-1.5">
+            {[0, 1].map(i => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
+          </div>
+          <div className="flex-1 bg-white rounded-xl border border-slate-100 shadow-sm p-6 space-y-5">
+            <Skeleton className="h-4 w-36" />
+            <div className="space-y-2"><Skeleton className="h-3 w-24" /><Skeleton className="h-10 w-full rounded-lg" /></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (error) return <div className="p-7 text-sm text-red-500">{error}</div>;
 
   return (

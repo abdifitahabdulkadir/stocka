@@ -4,6 +4,7 @@ import Breadcrumb from "../components/ui/Breadcrumb";
 import Badge from "../components/ui/Badge";
 import { useToast } from "../components/ui/Toast";
 import { useApi, post, patch, del } from "../lib/api";
+import { ListSkeleton } from "../components/ui/Skeleton";
 
 interface ServerNotification { id: number; type: string; title: string; body: string; read: boolean; created_at: string }
 
@@ -115,7 +116,7 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
             </div>
           );
         })}
-        {loading && <p className="text-center text-sm text-slate-400 py-10">Loading notifications...</p>}
+        {loading && !data && <ListSkeleton rows={5} />}
         {error && <p className="text-center text-sm text-red-500 py-10">{error}</p>}
         {!loading && !error && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">

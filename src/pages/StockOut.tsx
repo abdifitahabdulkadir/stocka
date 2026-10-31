@@ -4,6 +4,7 @@ import Breadcrumb from "../components/ui/Breadcrumb";
 import Badge from "../components/ui/Badge";
 import { useToast } from "../components/ui/Toast";
 import { post, useApi, withQuery } from "../lib/api";
+import { TableSkeleton } from "../components/ui/Skeleton";
 
 const reasons = ["Damaged / Defective", "Internal Use", "Expired / Obsolete", "Customer Return", "Adjustment", "Loss / Theft", "Quality Control Reject"];
 
@@ -208,7 +209,7 @@ export default function StockOut({ onNavigate }: StockOutProps) {
               </tr>
             </thead>
             <tbody>
-              {movements.loading && <tr><td colSpan={7} className="px-5 py-8 text-center text-xs text-slate-400">Loading...</td></tr>}
+              {movements.loading && !movements.data && <TableSkeleton rows={5} cols={7} />}
               {movements.error && <tr><td colSpan={7} className="px-5 py-8 text-center text-xs text-red-600">{movements.error}</td></tr>}
               {!movements.loading && !movements.error && history.length === 0 && (
                 <tr><td colSpan={7} className="px-5 py-8 text-center text-xs text-slate-400">No stock removals yet.</td></tr>

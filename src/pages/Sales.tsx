@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Search, ChevronDown, Eye } from "lucide-react";
 import { useApi } from "../lib/api";
+import { TableSkeleton } from "../components/ui/Skeleton";
 
 interface Order {
   id: number; code: string; customer: string | null; status: string; total: number; items: number; created_at: string;
@@ -128,9 +129,10 @@ export default function Sales() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {loading && !ordersData && <TableSkeleton rows={6} cols={7} />}
+              {filtered.length === 0 && !(loading && !ordersData) && (
                 <tr><td colSpan={7} className="text-center py-10 text-slate-400 text-sm">
-                  {loading ? "Loading orders..." : error ? <span className="text-red-500">{error}</span> : "No orders found"}
+                  {error ? <span className="text-red-500">{error}</span> : "No orders found"}
                 </td></tr>
               )}
             </tbody>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Search, Plus, Minus, Printer, CreditCard, Banknote, Smartphone, X, Check, Tag, Receipt } from "lucide-react";
 import { useToast } from "../components/ui/Toast";
 import { useApi, post } from "../lib/api";
+import { CardGridSkeleton } from "../components/ui/Skeleton";
 
 interface Product { id: number; name: string; sku: string; price: number; category: string | null; stock: number; }
 interface CustomerOption { id: number; name: string; status: string; }
@@ -121,9 +122,10 @@ export default function POS({ onNavigate: _onNavigate }: POSProps) {
 
         <div className="flex-1 overflow-y-auto p-4">
           <div className="grid grid-cols-3 gap-3">
-            {filtered.length === 0 && (
+            {loading && !productData && <div className="col-span-3"><CardGridSkeleton count={9} className="grid-cols-3 gap-3" cardClassName="p-4" /></div>}
+            {filtered.length === 0 && !(loading && !productData) && (
               <div className="col-span-3 text-center py-12 text-sm text-slate-400">
-                {loading ? "Loading products..." : error ? <span className="text-red-500">{error}</span> : "No products found"}
+                {error ? <span className="text-red-500">{error}</span> : "No products found"}
               </div>
             )}
             {filtered.map(p => (

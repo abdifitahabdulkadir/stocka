@@ -5,6 +5,7 @@ import Badge from "../components/ui/Badge";
 import { useToast } from "../components/ui/Toast";
 import { useApi, post, patch, del } from "../lib/api";
 import { useUser, initials } from "../lib/UserContext";
+import { TableSkeleton } from "../components/ui/Skeleton";
 
 const roles = ["admin", "staff"] as const;
 const roleLabel = (r: string) => r.charAt(0).toUpperCase() + r.slice(1);
@@ -210,7 +211,7 @@ export default function UserManagement({ onNavigate }: UserManagementProps) {
                 </tr>
               </thead>
               <tbody>
-                {loading && <tr><td colSpan={6} className="px-5 py-10 text-center text-sm text-slate-400">Loading users...</td></tr>}
+                {loading && !data && <TableSkeleton rows={5} cols={6} />}
                 {error && <tr><td colSpan={6} className="px-5 py-10 text-center text-sm text-red-500">{error}</td></tr>}
                 {!loading && !error && filtered.length === 0 && <tr><td colSpan={6} className="px-5 py-10 text-center text-sm text-slate-400">No users found.</td></tr>}
                 {filtered.map((u, i) => (

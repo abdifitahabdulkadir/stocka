@@ -1,6 +1,7 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { AlertTriangle, TrendingDown, Package, ArrowUpDown } from "lucide-react";
 import { useApi } from "../lib/api";
+import { ChartCardSkeleton, StatCardsSkeleton, TableCardSkeleton } from "../components/ui/Skeleton";
 
 interface InventoryData {
   totals: { products: number; units: number; stock_value: number; low_stock: number; out_of_stock: number };
@@ -13,9 +14,12 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { mon
 export default function Inventory() {
   const { data, loading, error } = useApi<InventoryData>("/api/inventory");
   if (!data) {
+    if (!loading) return <div className="p-7 text-sm text-red-500">{error || "No data"}</div>;
     return (
-      <div className={`p-7 text-sm ${error ? "text-red-500" : "text-slate-400"}`}>
-        {loading ? "Loading inventory..." : error || "No data"}
+      <div className="p-7 space-y-6 overflow-y-auto h-full">
+        <StatCardsSkeleton />
+        <ChartCardSkeleton height={180} />
+        <TableCardSkeleton cols={6} />
       </div>
     );
   }

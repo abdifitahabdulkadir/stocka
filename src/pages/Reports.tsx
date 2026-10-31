@@ -4,6 +4,7 @@ import {
 } from "recharts";
 import { Download } from "lucide-react";
 import { useApi } from "../lib/api";
+import { ChartCardSkeleton, Skeleton, StatCardsSkeleton, TableCardSkeleton } from "../components/ui/Skeleton";
 
 interface ReportsData {
   kpis: { revenue: number; orders: number; avg_order: number; cancelled: number; customers: number; stock_value: number };
@@ -16,7 +17,19 @@ const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDi
 export default function Reports() {
   const { data, loading, error } = useApi<ReportsData>("/api/reports");
 
-  if (loading && !data) return <div className="p-7 text-sm text-slate-400">Loading reports...</div>;
+  if (loading && !data) {
+    return (
+      <div className="p-7 space-y-6 overflow-y-auto h-full">
+        <div className="flex gap-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-24 rounded-lg" />)}</div>
+        <StatCardsSkeleton />
+        <div className="grid grid-cols-2 gap-5">
+          <ChartCardSkeleton />
+          <ChartCardSkeleton />
+        </div>
+        <TableCardSkeleton cols={5} />
+      </div>
+    );
+  }
   if (error || !data) return <div className="p-7 text-sm text-red-600">{error || "Could not load reports."}</div>;
 
   const { kpis: k, salesByMonth, topProducts } = data;

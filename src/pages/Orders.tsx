@@ -5,6 +5,7 @@ import { Search, Eye, X, ChevronDown, Download } from "lucide-react";
 import Breadcrumb from "../components/ui/Breadcrumb";
 import Badge from "../components/ui/Badge";
 import Pagination from "../components/ui/Pagination";
+import { Skeleton, TableSkeleton } from "../components/ui/Skeleton";
 
 interface Order {
   id: number; code: string; customer: string | null; customer_id: number | null;
@@ -60,7 +61,17 @@ function OrderDetailModal({ order, onClose, onChanged }: { order: Order; onClose
             <p className="text-sm font-semibold text-slate-900">{order.customer ?? "Walk-in customer"}</p>
           </div>
 
-          {loading && <p className="text-xs text-slate-400 py-6 text-center">Loading items...</p>}
+          {loading && (
+            <div className="space-y-3 py-2" role="status" aria-label="Loading">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
+                  <div className="flex-1 space-y-2"><Skeleton className="h-3 w-2/5" /><Skeleton className="h-2.5 w-1/4" /></div>
+                  <Skeleton className="h-3 w-14" />
+                </div>
+              ))}
+            </div>
+          )}
           {error && <p className="text-xs text-red-500 py-6 text-center">{error}</p>}
           {data && (
             <>
@@ -217,9 +228,10 @@ export default function Orders({ onNavigate }: OrdersProps) {
                   </tr>
                 );
               })}
-              {paginated.length === 0 && (
+              {loading && !data && <TableSkeleton rows={6} cols={8} />}
+              {paginated.length === 0 && !(loading && !data) && (
                 <tr><td colSpan={8} className="text-center py-10 text-slate-400 text-sm">
-                  {loading ? "Loading orders..." : error ? <span className="text-red-500">{error}</span> : "No orders found"}
+                  {error ? <span className="text-red-500">{error}</span> : "No orders found"}
                 </td></tr>
               )}
             </tbody>

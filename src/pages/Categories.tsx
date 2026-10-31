@@ -4,6 +4,7 @@ import Breadcrumb from "../components/ui/Breadcrumb";
 import Pagination from "../components/ui/Pagination";
 import { useToast } from "../components/ui/Toast";
 import { useApi, post, patch, del } from "../lib/api";
+import { CardGridSkeleton } from "../components/ui/Skeleton";
 
 interface Category { id: number; code: string; name: string; description: string; color: string; products: number; icon?: string }
 
@@ -192,9 +193,10 @@ export default function Categories({ onNavigate }: CategoriesProps) {
             </div>
           </div>
         ))}
-        {paginated.length === 0 && (
+        {loading && !data && <div className="col-span-3"><CardGridSkeleton count={6} /></div>}
+        {paginated.length === 0 && !(loading && !data) && (
           <div className={`col-span-3 text-center py-16 text-sm ${error ? "text-red-500" : "text-slate-400"}`}>
-            {loading ? "Loading categories..." : error || "No categories found"}
+            {error || "No categories found"}
           </div>
         )}
       </div>

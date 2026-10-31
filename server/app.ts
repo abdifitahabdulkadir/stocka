@@ -1,14 +1,14 @@
 import express from "express";
-import { onError } from "./http";
 import { requireAdmin, requireAuth } from "./auth";
+import { onError } from "./http";
 import auth from "./routes/auth";
-import users from "./routes/users";
+import { categories, customers, products, suppliers } from "./routes/catalog";
+import { notifications, settings } from "./routes/misc";
 import orders from "./routes/orders";
-import stock from "./routes/stock";
 import purchaseOrders from "./routes/purchaseOrders";
 import reports from "./routes/reports";
-import { categories, products, customers, suppliers } from "./routes/catalog";
-import { notifications, settings } from "./routes/misc";
+import stock from "./routes/stock";
+import users from "./routes/users";
 
 const app = express();
 app.use("/api", express.json({ limit: "100kb" }));
