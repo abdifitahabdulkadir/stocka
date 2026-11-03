@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="0.5" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.1" cy="0.05" r="0.5">
+      <stop offset="0" stop-color="#f97316" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#fb923c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.95" cy="1" r="0.5">
+      <stop offset="0" stop-color="#f97316" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#ea580c" stop-opacity="0"/>
+    </radialGradient>
+    <g id="cube">
+      <polygon points="0,-40 34.6,-20 0,0 -34.6,-20" fill="#fb923c" fill-opacity="0.35"/>
+      <polygon points="-34.6,-20 0,0 0,40 -34.6,20" fill="#ea580c" fill-opacity="0.28"/>
+      <polygon points="0,0 34.6,-20 34.6,20 0,40" fill="#c2410c" fill-opacity="0.22"/>
+      <polyline points="-34.6,-20 0,-40 34.6,-20 34.6,20 0,40 -34.6,20 -34.6,-20 M0,0 L0,40 M0,0 L-34.6,-20 M0,0 L34.6,-20" fill="none" stroke="#ea580c" stroke-opacity="0.55" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect width="1600" height="900" fill="url(#glowA)"/>
+  <rect width="1600" height="900" fill="url(#glowB)"/>
+  <!-- stacked crates, left -->
+  <use href="#cube" transform="translate(150 690) scale(1.5)"/>
+  <use href="#cube" transform="translate(272 690) scale(1.5)"/>
+  <use href="#cube" transform="translate(211 600) scale(1.5)"/>
+  <use href="#cube" transform="translate(90 800) scale(1)"/>
+  <!-- stacked crates, right -->
+  <use href="#cube" transform="translate(1430 230) scale(1.4)"/>
+  <use href="#cube" transform="translate(1530 290) scale(1)"/>
+  <use href="#cube" transform="translate(1380 340) scale(0.8)"/>
+  <use href="#cube" transform="translate(1290 740) scale(0.9)"/>
+  <use href="#cube" transform="translate(330 150) scale(0.7)"/>
+  <use href="#cube" transform="translate(1180 110) scale(0.6)"/>
+</svg>
